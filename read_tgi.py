@@ -214,13 +214,13 @@ def plot_sci(data):
 		# fig.clf()
 	return
 
-def analyse_tod(prefix, numfiles=1):
+def analyse_tod(prefix, numfiles=1,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4)):
 	# Read in the data
 	jd = np.empty(0)
 	az = np.empty(0)
 	el = np.empty(0)
 	data = np.empty((0,0,0))
-	for i in range(0,14):
+	for i in range(0,numfiles):
 		inputfits = fits.open(prefix+'-'+format(i, '04d')+'.tod2')
 		#print(inputfits.info())
 		#print(len(inputfits))
@@ -240,14 +240,14 @@ def analyse_tod(prefix, numfiles=1):
 			jd = np.append(jd, inputfits[1].data.field(0)[0][:nsamples*4])
 			az = np.append(az,inputfits[1].data.field(1)[0][:nsamples*4])
 			el = np.append(el,inputfits[1].data.field(2)[0][:nsamples*4])
-		print(jd[0:100])
-		print('Start time: ' + str(np.min(jd)))
-		print('End time: ' + str(np.max(jd)))
-		print('Duration: ' + str((np.max(jd)-np.min(jd))*24*60) + ' minutes')
+		#print(jd[0:100])
+		print('Start time: ' + str(np.min(inputfits[1].data.field(0)[0][:nsamples*4])))
+		print('End time: ' + str(np.max(inputfits[1].data.field(0)[0][:nsamples*4])))
+		print('Duration: ' + str((np.max(inputfits[1].data.field(0)[0][:nsamples*4])-np.min(inputfits[1].data.field(0)[0][:nsamples*4]))*24*60*60) + ' seconds')
 		print('There are ' + str(ndata) + " datapoints")
 		print('There are ' + str(len(jd)) + " datapoints")	
 		print('There are ' + str(len(az)) + " datapoints")	
-		print(az[0:100])
+		#print(az[0:100])
 		print('Az range: ' + str(np.min(az)) + ' to ' + str(np.max(az)))
 		print('El range: ' + str(np.min(el)) + ' to ' + str(np.max(el)))
 		rawdata = inputfits[1].data.field(3)[0][:nsamples*4*4*31]
@@ -283,163 +283,164 @@ def analyse_tod(prefix, numfiles=1):
 	healpix_pixel = hp.ang2pix(nside, (3.1415/2)-Angle(skypos.b).radian, Angle(skypos.l).radian)
 
 	# Make maps for each pixel
-	for pix in range(0,numpixels):
+	for pix in pixelrange:
 		maxdata = 50000
-		print('Pixel ' + str(pix+1))
-		plt.plot(data[0][pix][0][:],'b.')
-		plt.savefig('plots/plot_tod_'+str(pix+1)+'_pre.png')
-		plt.clf()
-		plt.plot(data[0][pix][0][0:5000],'b.')
-		plt.savefig('plots/plot_tod_'+str(pix+1)+'_pre_zoom.png')
-		plt.clf()
+		for det in detrange:
+			print('Pixel ' + str(pix+1) + ', detector ' + str(det+1))
+			plt.plot(data[det][pix][0][:],'b.')
+			plt.savefig('plots/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_pre.png')
+			plt.clf()
+			plt.plot(data[det][pix][0][0:5000],'b.')
+			plt.savefig('plots/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_pre_zoom.png')
+			plt.clf()
 
-		fft_w = np.fft.rfft(data[0][pix][0][0:maxdata])
-		fft_f = np.fft.rfftfreq(len(data[0][pix][0][0:maxdata]), 1/1000)
-		# fft_w = np.sqrt(np.real(fft_w)^2 + np.imag(fft_w)^2)
-		fft_spectrum = np.abs(fft_w)**2
-		#print(fft_spectrum)
-		#print(fft_f)
-		plt.plot(fft_f, fft_spectrum)
-		plt.xscale("log")
-		plt.yscale("log")
-		plt.savefig('plots/plot_fft_'+str(pix+1)+'.png')
-		plt.clf()
-		plt.plot(fft_f, fft_spectrum)
-		plt.yscale("log")
-		plt.savefig('plots/plot_fft_'+str(pix+1)+'_lin.png')
-		plt.clf()
+			for j in phaserange:
 
-		# Do a smoothed version
-		numbins = 50
-		bins = np.linspace(np.log(min(fft_f[1:-1])),np.log(max(fft_f[1:-1])),numbins,endpoint=False)
-		values = np.zeros(numbins)
-		values2 = np.zeros(numbins)
-		matches = np.digitize(np.log(fft_f),bins)
-		binmask = np.ones(numbins)
-		for i in range(0,numbins):
-			values[i] = np.nanmean(np.log(fft_spectrum[matches == i]))
-			values2[i] = np.nanmean(fft_spectrum[matches == i])
-			if np.isnan(values[i]) or np.isnan(values2[i]):
-				binmask[i] = 0
-		binmask[0] = 0
-		binmask[-1] = 0
-		binmask[-2] = 0
-		# Fit to get the knee frequency
-		# Using modified code from http://pchanial.github.io/python-for-data-scientists/body.html (by Jm. Colley)
-		# params = np.array([np.sqrt(np.median(fft_spectrum))/5, 0.01, 1.0])
-		params = np.array([(values[binmask==1])[-2], 0.01, 1.0])
-		#print(params)
-		# print np.exp(values[0,5:])
-		# print np.exp(bins[5:])
-		#print(values[binmask==1])
-		#print(values2[binmask==1])
-		# param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals, params, args=(values2[binmask==1], bins[binmask==1]),full_output=True)
-		param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals, params, args=(np.exp(values[binmask==1]), np.exp(bins[binmask==1])),full_output=True)
-		#print(param_est)
-		#print(cov_x)
-		#print(mesg_result)
-		#print(ret_value)
-		# exit()
+				fft_w = np.fft.rfft(data[det][pix][j][0:maxdata])
+				fft_f = np.fft.rfftfreq(len(data[det][pix][j][0:maxdata]), 1/4000)
+				fft_spectrum = np.abs(fft_w)
+				#fft_spectrum = np.abs(fft_w)**2
+				plt.plot(fft_f, fft_spectrum)
+				plt.xscale("log")
+				plt.yscale("log")
+				plt.savefig('plots/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+				plt.clf()
+				plt.plot(fft_f, fft_spectrum)
+				plt.yscale("log")
+				plt.savefig('plots/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_lin.png')
+				plt.clf()
 
-		# Plot the spectrum
-		plt.xlabel('Frequency (Hz)')
-		plt.ylabel('Power')
-		plt.xscale('log')
-		plt.yscale('log')
-		ymax = np.max(fft_spectrum[1:])*1.5
-		ymin = np.min(fft_spectrum[1:])
-		plt.ylim(ymin=ymin,ymax=ymax)
-		plt.plot(fft_f, fft_spectrum,label='Data')
-		plt.plot(np.exp(bins[1:]), np.exp(values[1:]), 'r', label='Mean (in log)')
-		plt.plot(np.exp(bins[1:]), values2[1:], 'm', label='Mean (in linear)')
-		try:
-			sigma_param_est = np.sqrt(np.diagonal(cov_x))
-			mesg_fit = (
-			r'$\sigma={:5.3g}\pm{:3.2g}$'.format(
-				param_est[0], sigma_param_est[0]) + ','
-			r'$f_{{\rm knee}}={:5.3f}\pm{:3.2f}$'.format(
-				param_est[1], sigma_param_est[1]) + ','
-			r'     $\alpha={:5.3f}\pm{:3.2f}$'.format(
-				param_est[2], sigma_param_est[2]))
-			plt.plot(fft_f, fit_kneefreq(fft_f, param_est),label="Fit: " + mesg_fit)
-		except:
-			mesg_fit = (
-			r'$\sigma={:5.3g}$'.format(
-				param_est[0]) + ','
-			r'$f_{{\rm knee}}={:5.3f}$'.format(
-				param_est[1]) + ','
-			r'     $\alpha={:5.3f}$'.format(
-				param_est[2]))
-			plt.plot(fft_f, fit_kneefreq(fft_f, param_est),label="Fit" + mesg_fit)
-		plt.legend(prop={'size':8})
-		plt.savefig('plots/plot_fft_'+str(pix+1)+'_fit.png')
-		plt.close()
-		plt.clf()
+				# Do a smoothed version
+				numbins = 50
+				bins = np.linspace(np.log(min(fft_f[1:-1])),np.log(max(fft_f[1:-1])),numbins,endpoint=False)
+				values = np.zeros(numbins)
+				values2 = np.zeros(numbins)
+				matches = np.digitize(np.log(fft_f),bins)
+				binmask = np.ones(numbins)
+				for i in range(0,numbins):
+					values[i] = np.nanmean(np.log(fft_spectrum[matches == i]))
+					values2[i] = np.nanmean(fft_spectrum[matches == i])
+					if np.isnan(values[i]) or np.isnan(values2[i]):
+						binmask[i] = 0
+				binmask[0] = 0
+				binmask[-1] = 0
+				binmask[-2] = 0
+				# Fit to get the knee frequency
+				# Using modified code from http://pchanial.github.io/python-for-data-scientists/body.html (by Jm. Colley)
+				# params = np.array([np.sqrt(np.median(fft_spectrum))/5, 0.01, 1.0])
+				params = np.array([(values[binmask==1])[-2], 0.01, 1.0])
+				#print(params)
+				# print np.exp(values[0,5:])
+				# print np.exp(bins[5:])
+				#print(values[binmask==1])
+				#print(values2[binmask==1])
+				# param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals, params, args=(values2[binmask==1], bins[binmask==1]),full_output=True)
+				param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals, params, args=(np.exp(values[binmask==1]), np.exp(bins[binmask==1])),full_output=True)
+				#print(param_est)
+				#print(cov_x)
+				#print(mesg_result)
+				#print(ret_value)
+				# exit()
 
-		# Crude baseline removal
-		navg = 1500
-		option = 0
-		for i in range(0,npix//navg):
-			start = i*navg
-			end = ((i+1)*navg)
-			# print('start:' + str(start) + ', end: ' + str(end))
+				# Plot the spectrum
+				plt.xlabel('Frequency (Hz)')
+				plt.ylabel('Power')
+				plt.xscale('log')
+				plt.yscale('log')
+				ymax = np.max(fft_spectrum[1:])*1.5
+				ymin = np.min(fft_spectrum[1:])
+				plt.ylim(ymin=ymin,ymax=ymax)
+				plt.plot(fft_f, fft_spectrum,label='Data')
+				plt.plot(np.exp(bins[1:]), np.exp(values[1:]), 'r', label='Mean (in log)')
+				plt.plot(np.exp(bins[1:]), values2[1:], 'm', label='Mean (in linear)')
+				try:
+					sigma_param_est = np.sqrt(np.diagonal(cov_x))
+					mesg_fit = (
+					r'$\sigma={:5.3g}\pm{:3.2g}$'.format(
+						param_est[0], sigma_param_est[0]) + ','
+					r'$f_{{\rm knee}}={:5.3f}\pm{:3.2f}$'.format(
+						param_est[1], sigma_param_est[1]) + ','
+					r'     $\alpha={:5.3f}\pm{:3.2f}$'.format(
+						param_est[2], sigma_param_est[2]))
+					plt.plot(fft_f, fit_kneefreq(fft_f, param_est),label="Fit: " + mesg_fit)
+				except:
+					mesg_fit = (
+					r'$\sigma={:5.3g}$'.format(
+						param_est[0]) + ','
+					r'$f_{{\rm knee}}={:5.3f}$'.format(
+						param_est[1]) + ','
+					r'     $\alpha={:5.3f}$'.format(
+						param_est[2]))
+					plt.plot(fft_f, fit_kneefreq(fft_f, param_est),label="Fit" + mesg_fit)
+				plt.legend(prop={'size':8})
+				plt.savefig('plots/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_fit.png')
+				plt.close()
+				plt.clf()
+
+			# Crude baseline removal
+			navg = 1500
+			option = 0
+			for i in range(0,npix//navg):
+				start = i*navg
+				end = ((i+1)*navg)
+				# print('start:' + str(start) + ', end: ' + str(end))
+				if option == 0:
+					med = np.median(data[det][pix][0][start:end])
+					data[det][pix][0][start:end] = data[det][pix][0][start:end] - med
+				else:
+					xline = range(0,len(data[det][pix][0][start:end]))
+					if len(xline) != 0:
+						A,B=curve_fit(linfit,xline,data[det][pix][0][start:end])[0]
+						# print(A,B)
+						data[det][pix][0][start:end] = data[det][pix][0][start:end] - (A*xline+B)
+
 			if option == 0:
-				med = np.median(data[0][pix][0][start:end])
-				data[0][pix][0][start:end] = data[0][pix][0][start:end] - med
+				data[det][pix][0][(npix//navg)*navg-1:] = data[det][pix][0][(npix//navg)*navg-1:] - np.median(data[det][pix][0][(npix//navg)*navg-1:])
 			else:
-				xline = range(0,len(data[0][pix][0][start:end]))
+				xline = range(0,len(data[det][pix][0][(npix//navg)*navg-1:]))
 				if len(xline) != 0:
-					A,B=curve_fit(linfit,xline,data[0][pix][0][start:end])[0]
+					A,B=curve_fit(linfit,xline,data[det][pix][0][(npix//navg)*navg-1:])[0]
 					# print(A,B)
-					data[0][pix][0][start:end] = data[0][pix][0][start:end] - (A*xline+B)
+					data[det][pix][0][(npix//navg)*navg-1:] = data[det][pix][0][(npix//navg)*navg-1:] - (A*xline+B)
 
-		if option == 0:
-			data[0][pix][0][(npix//navg)*navg-1:] = data[0][pix][0][(npix//navg)*navg-1:] - np.median(data[0][pix][0][(npix//navg)*navg-1:])
-		else:
-			xline = range(0,len(data[0][pix][0][(npix//navg)*navg-1:]))
-			if len(xline) != 0:
-				A,B=curve_fit(linfit,xline,data[0][pix][0][(npix//navg)*navg-1:])[0]
-				# print(A,B)
-				data[0][pix][0][(npix//navg)*navg-1:] = data[0][pix][0][(npix//navg)*navg-1:] - (A*xline+B)
+			plt.plot(data[det][pix][0][:],'b.')
+			plt.savefig('plots/plot_tod_'+str(pix+1)+'_'+str(det+1)+'.png')
+			plt.clf()
+			plt.plot(data[det][pix][0][0:5000],'b.')
+			plt.savefig('plots/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_zoom.png')
+			plt.clf()
 
-		plt.plot(data[0][pix][0][:],'b.')
-		plt.savefig('plots/plot_tod_'+str(pix+1)+'.png')
-		plt.clf()
-		plt.plot(data[0][pix][0][0:5000],'b.')
-		plt.savefig('plots/plot_tod_'+str(pix+1)+'_zoom.png')
-		plt.clf()
+			skymap = np.zeros(npix, dtype=np.float)
+			hitmap = np.zeros(npix, dtype=np.float)
+			for i in range(0,len(healpix_pixel)):
+				skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + data[det][pix][0][i]
+				hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
+			for i in range(0,len(skymap)):
+				if hitmap[i] >= 1:
+					skymap[i] = skymap[i]/hitmap[i]
+				else:
+					skymap[i] = hp.pixelfunc.UNSEEN
 
-		skymap = np.zeros(npix, dtype=np.float)
-		hitmap = np.zeros(npix, dtype=np.float)
-		for i in range(0,len(healpix_pixel)):
-			skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + data[0][pix][0][i]
-			hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
-		for i in range(0,len(skymap)):
-			if hitmap[i] >= 1:
-				skymap[i] = skymap[i]/hitmap[i]
-			else:
-				skymap[i] = hp.pixelfunc.UNSEEN
+			if pix == 3 or pix == 4 or pix == 5 or pix == 21 or pix == 22 or pix == 23 or pix == 24 or pix == 25:
+				# print(pix)
+				# Get the maximum value in the map
+				maxval = np.max(skymap)
+				# Get a sample of data from the start of the measurement
+				std = np.std(data[det][pix][0][0:4000])
+				print(maxval)
+				print(std)
+				print(std*(400/maxval)/np.sqrt(1000.0))
 
-		if pix == 3 or pix == 4 or pix == 5 or pix == 21 or pix == 22 or pix == 23 or pix == 24 or pix == 25:
-			# print(pix)
-			# Get the maximum value in the map
-			maxval = np.max(skymap)
-			# Get a sample of data from the start of the measurement
-			std = np.std(data[0][pix][0][0:4000])
-			print(maxval)
-			print(std)
-			print(std*(400/maxval)/np.sqrt(1000.0))
-
-		hp.write_map('maps/skymap_'+str(pix+1)+'.fits',skymap,overwrite=True)
-		hp.mollview(skymap)
-		plt.savefig('plots/skymap_'+str(pix+1)+'.png')
-		plt.clf()
-		hp.write_map('maps/hitmap_'+str(pix+1)+'.fits',hitmap,overwrite=True)
-		hp.mollview(hitmap)
-		plt.savefig('plots/hitmap_'+str(pix+1)+'.png')
-		hp.gnomview(skymap,rot=(185,-7),reso=4)
-		plt.savefig('plots/skymap_crab_'+str(pix+1)+'.png')
-		plt.clf()
+			hp.write_map('maps/skymap_'+str(pix+1)+'_'+str(det+1)+'.fits',skymap,overwrite=True)
+			hp.mollview(skymap)
+			plt.savefig('plots/skymap_'+str(pix+1)+'_'+str(det+1)+'.png')
+			plt.clf()
+			hp.write_map('maps/hitmap_'+str(pix+1)+'_'+str(det+1)+'.fits',hitmap,overwrite=True)
+			hp.mollview(hitmap)
+			plt.savefig('plots/hitmap_'+str(pix+1)+'_'+str(det+1)+'.png')
+			hp.gnomview(skymap,rot=(185,-7),reso=4)
+			plt.savefig('plots/skymap_crab_'+str(pix+1)+'_'+str(det+1)+'.png')
+			plt.clf()
 	exit()
 
 	# # Plot a boxcar average
@@ -471,5 +472,6 @@ def analyse_tod(prefix, numfiles=1):
 
 #analyse_tod('testdata/CRAB-190311-1728',numfiles=15)
 #analyse_tod('testdata/CRAB-190409-2029',numfiles=14)
-analyse_tod('testdata/CRAB-190410-1529',numfiles=14)
+# analyse_tod('testdata/CRAB-190410-1529',numfiles=14)
+analyse_tod('testdata/CRAB-190410-2025',numfiles=14,pixelrange=[3,4,5,21,22,23,24])
 
