@@ -240,22 +240,16 @@ class tgi:
 
 		return data
 
-	def converttopol(self, data, option=0):
+	def converttopol(self, data, ordering=[0,1,2,3]):
 		newdata = data
-		if option == 0:
-			newdata[0] = (data[0] + data[1]) / 2.0
-			newdata[1] = (data[0] - data[1]) / 2.0
-			newdata[2] = (data[2] - data[3]) / 2.0
-			newdata[3] = (data[2] + data[3]) / 2.0
-		elif option == 1:
-			newdata[0] = (data[0] + data[2]) / 2.0
-			newdata[1] = (data[0] - data[2]) / 2.0
-			newdata[2] = (data[1] - data[3]) / 2.0
-			newdata[3] = (data[1] + data[3]) / 2.0
+		newdata[0] = (data[ordering[0]] + data[ordering[1]]) / 2.0
+		newdata[1] = (data[ordering[0]] - data[ordering[1]]) / 2.0
+		newdata[2] = (data[ordering[2]] - data[ordering[3]]) / 2.0
+		newdata[3] = (data[ordering[2]] + data[ordering[3]]) / 2.0
 		return newdata
 
 
-	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,dopol=False,numfiles=50):
+	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50):
 		print(self.outdir+'/'+prefix)
 		self.ensure_dir(self.outdir+'/'+prefix)
 
@@ -272,19 +266,27 @@ class tgi:
 				# Do we want to change from phase to I1,Q,U,I2?
 				if dopol:
 					# Different for TGI and FGI...
-					if pix > 10:
-						option = 0
-					else:
-						option = 0
-					data[det][pix] = self.converttopol(data[det][pix],option=option)
+					if det == 0:
+						ordering = [0,1,2,3]
+					elif det == 1:
+						ordering = [1,2,3,0]
+					elif det == 2:
+						ordering = [2,3,0,1]
+					elif det == 3:
+						ordering = [3,0,1,2]
+					# if pix > 10:
+					# 	ordering = [0,1,2,3]
+					# else:
+					# 	ordering = [0,2,1,3]
+					data[det][pix] = self.converttopol(data[det][pix],ordering=ordering)
 
 				for j in phaserange:
 
 					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
-
-					# Plot some tods
-					self.plot_tod(data[det][pix][j][:], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
-					self.plot_tod(data[det][pix][j][0:5000],self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
+					if plottods:
+						# Plot some tods
+						self.plot_tod(data[det][pix][j][:], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
+						self.plot_tod(data[det][pix][j][0:5000],self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
 
 					# Do an FFT. Warning, this can slow things down quite a bit.
 					if dofft:
@@ -293,8 +295,9 @@ class tgi:
 
 					data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
 
-					self.plot_tod(data[det][pix][0][10:], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-					self.plot_tod(data[det][pix][0][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
+					if plottods:
+						self.plot_tod(data[det][pix][0][10:], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						self.plot_tod(data[det][pix][0][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
 
 					skymap = np.zeros(self.npix, dtype=np.float)
 					hitmap = np.zeros(self.npix, dtype=np.float)
@@ -426,7 +429,44 @@ class tgi:
 				plt.clf()
 		return
 
-	def get_sci(self, filename):
+	def combine_sky_maps(self,skymaps,hitmaps,outputname,centralpos=(0,0)):
+
+		skymap = np.zeros(self.npix, dtype=np.float)
+		hitmap = np.zeros(self.npix, dtype=np.float)
+
+		nummaps = len(skymaps)
+		for i in range(0,nummaps):
+			inputmap = hp.read_map(skymaps[i])
+			inputhitmap = hp.read_map(hitmaps[i])
+			for j in range(0,self.npix):
+				if inputhitmap[j] > 0:
+					skymap[j] = skymap[j] + inputmap[j]*inputhitmap[j]
+					hitmap[j] = hitmap[j] + inputhitmap[j]
+
+		# We now have a combined map, time to normalise it
+		for i in range(0,self.npix):
+			if hitmap[i] >= 1:
+				skymap[i] = skymap[i]/hitmap[i]
+			else:
+				skymap[i] = hp.pixelfunc.UNSEEN
+
+		hp.write_map(outputname+'_skymap.fits',skymap,overwrite=True)
+		hp.mollview(skymap)
+		plt.savefig(outputname+'_skymap.png')
+		plt.close()
+		plt.clf()
+		hp.write_map(outputname+'_hitmap.fits',hitmap,overwrite=True)
+		hp.mollview(hitmap)
+		plt.savefig(outputname+'_hitmap.png')
+		hp.gnomview(skymap,rot=centralpos,reso=5,min=-0.0002,max=0.0002)
+		plt.savefig(outputname+'_zoom.png')
+		plt.close()
+		plt.clf()
+
+		return
+
+	# Originally by Roger, 'read_sci_FTGI_2018.py'
+	def get_sci(self, filename,quiet=False):
 		data=np.empty(shape=(124,60*4000),dtype=float)
 		dat=np.empty(4000,dtype='i8')
 		with open(filename, "rb") as f:
@@ -459,35 +499,37 @@ class tgi:
 					dat= np.fromfile(f,count=4000, dtype='>i4')
 					dat=dat*Sc_factor
 					data[i,(k*4000):(k*4000)+4000]=dat
-				   
-					print(k,i)      
-					print('campo1 = ' + str(campo1))
-					print('campo2 = ' + str(campo2))
-					print('campo3 = ' + str(campo3))
-					print('campo4 = ' + str(campo4))
-					print('campo5 = ' + str(campo5))
-					print('campo6 = ' + str(campo6))
-					print('campo7 = ' + str(campo7))
-					print('Tstamp = ' + str(Tstamp))
-					print('Time = ' + str(Time))
-					print('SID = ' + str(SID))
-					print('AqErr = ' + str(AqErr)) 
-					print('channel_ID = ' + str(channel_ID))
-					print('cal_flag = ' + str(cal_flag))
-					print('cal__sw = ' + str(cal_sw))
-					print('ph__sw = ' + str(ph_sw) + ' (1- 16KHz, 2- 8KHz)')
-					print('repuesto1 = ' + str(repuesto1))
-					print('Nphstates = ' + str(Nphstates))
-					print('Phase sequence = ' + str(PHseq))
-					print('Process type = ' + str(Processtype))
-					print('repuesto2 = ' + str(repuesto2))
-					print('packet counter = ' + str(Pack_count))
-					print('Scale factor = ' + str(Sc_factor))
-					print('Sampling rate = ' + str(Samprate))
-					print('No of samples = ' + str(NSample))
-					print(dat[0:10])
+					
+					if not quiet:
+						print(k,i)      
+						print('campo1 = ' + str(campo1))
+						print('campo2 = ' + str(campo2))
+						print('campo3 = ' + str(campo3))
+						print('campo4 = ' + str(campo4))
+						print('campo5 = ' + str(campo5))
+						print('campo6 = ' + str(campo6))
+						print('campo7 = ' + str(campo7))
+						print('Tstamp = ' + str(Tstamp))
+						print('Time = ' + str(Time))
+						print('SID = ' + str(SID))
+						print('AqErr = ' + str(AqErr)) 
+						print('channel_ID = ' + str(channel_ID))
+						print('cal_flag = ' + str(cal_flag))
+						print('cal__sw = ' + str(cal_sw))
+						print('ph__sw = ' + str(ph_sw) + ' (1- 16KHz, 2- 8KHz)')
+						print('repuesto1 = ' + str(repuesto1))
+						print('Nphstates = ' + str(Nphstates))
+						print('Phase sequence = ' + str(PHseq))
+						print('Process type = ' + str(Processtype))
+						print('repuesto2 = ' + str(repuesto2))
+						print('packet counter = ' + str(Pack_count))
+						print('Scale factor = ' + str(Sc_factor))
+						print('Sampling rate = ' + str(Samprate))
+						print('No of samples = ' + str(NSample))
+						print(dat[0:10])
 		return data
 
+	# Originally by Roger, 'plot_cal_data_sci_FGI_multi2018.py'
 	def plot_sci(self, data):
 		dt2=data
 		ds=int(data.size/(8*124))
