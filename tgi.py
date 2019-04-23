@@ -20,6 +20,7 @@ from astropy.time import Time
 from astropy.coordinates import Angle
 from scipy.optimize import curve_fit
 import os
+import astroplan
 
 def linfit(x, A, B):
 	return A*x+B
@@ -35,7 +36,7 @@ def compute_residuals(param, data, freq):
 
 
 class tgi:
-	def __init__(self,indir="/net/nas/proyectos/quijote2",outdir=''):
+	def __init__(self,indir="/net/nas/proyectos/quijote2",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt"):
 		self.numpixels = 31
 		self.indir = indir
 		self.outdir = outdir
@@ -43,9 +44,77 @@ class tgi:
 		self.jd_ref = 2456244.5 # Taken as the first day of the Commissioning (13/Nov/2012, 0.00h)
 		self.nside = 512
 		self.npix = hp.nside2npix(self.nside)
+		self.pixeljds, self.pixelarrays = self.read_pixel_masterfiles(pixelfileloc)
+		self.pixelpositions = self.read_pixel_positions(pixelposfileloc)
+		self.apobserver = astroplan.Observer(latitude=28.300224*u.deg, longitude=-16.510113*u.deg, elevation=2390*u.m)
+		# NB: Galactic doesn't work with hour angles
+		self.coordsys = 1 # 0 = Galactic, 1 = ICRS.
 
 	def ensure_dir(self,f):
 		os.makedirs(f, exist_ok=True)
+
+	# Read in a single pixel masterfile, and return the dictionary of the results
+	def read_pixel_masterfile(self, filename):
+		jd = 0
+		array = []
+		with open(filename) as f:
+			for line in f:
+				if jd == 0:
+					jd = float(line.strip())
+				else:
+					val = line.strip().split()
+					# Convert to integers
+					val = [int(x) for x in val]
+					array.append(val)
+		return jd, array
+		
+	# Read in a single pixel masterfile, and return the dictionary of the results
+	def read_pixel_positions(self, filename):
+		array = []
+		with open(filename) as f:
+			for line in f:
+				if '*' not in line:
+					val = line.strip().split()
+					array.append([int(val[0]), float(val[1]), float(val[2])])
+		return array
+		
+	def read_pixel_masterfiles(self, prefix):
+		jds = []
+		arrays = []
+		for i in range(1,500):
+			print(prefix+str(i)+'.txt')
+			try:
+				jd, array = self.read_pixel_masterfile(prefix+str(i)+'.txt')
+			except:
+				break
+			jds.append(jd)
+			arrays.append(array)
+		# print(jds)
+		# exit()
+		return jds, arrays
+
+	def get_pixel_info(self, jd, das):
+		print(jd)
+		print(das)
+		# print(self.pixeljds)
+		pixel_jd = [x for x in self.pixeljds if x <= jd][-1]
+		# print(pixel_jd)
+		pixel_id = self.pixeljds.index(pixel_jd)
+		# print(pixel_id)
+		for line in self.pixelarrays[pixel_id]:
+			# print(line)
+			if line[5] == das:
+				if line[1] >= 40:
+					tgi = 0
+					fgi = 1
+				else:
+					tgi = 1
+					fgi = 0
+				pixelposition = self.pixelpositions[line[0]-1]
+				print(pixelposition)
+				return {'fp':line[0],'pixel':line[1],'fem':line[2],'bem':line[3],'das':line[5],'tgi':tgi,'fgi':fgi,'x_pos':pixelposition[1],'y_pos':pixelposition[2]}
+				# return line
+		return []
 
 	def read_tod(self, prefix, numfiles=50,quiet=True):
 		# Read in the data
@@ -114,10 +183,23 @@ class tgi:
 		# Convert the az/el in the data to healpix pixel numbers
 		time = Time(jd[0]+self.jd_ref, format='jd')
 		position = AltAz(az=az[0]*u.deg,alt=el[0]*u.deg,location=self.telescope,obstime=time)
-		skypos = position.transform_to(Galactic)
-		healpix_pixel = hp.ang2pix(self.nside, (3.1415/2)-Angle(skypos.b).radian, Angle(skypos.l).radian)
-		pos = (np.median(Angle(skypos.l).degree),np.median((Angle(skypos.b).degree)))
-		# print(pos)
+		if self.coordsys == 0:
+			skypos = position.transform_to(Galactic)
+			pa = []
+		else:
+			skypos = position.transform_to(ICRS)
+			# pa = []
+			pa = self.apobserver.parallactic_angle(time,skypos)
+		return skypos,pa
+
+	def calc_healpix_pixels(self, skypos):
+		if self.coordsys == 0:
+			healpix_pixel = hp.ang2pix(self.nside, (3.1415/2)-Angle(skypos.b).radian, Angle(skypos.l).radian)
+			pos = (np.median(Angle(skypos.l).degree),np.median((Angle(skypos.b).degree)))
+		else:
+			print(skypos)
+			healpix_pixel = hp.ang2pix(self.nside, (3.1415/2)-Angle(skypos.dec).radian, Angle(skypos.ra).radian)
+			pos = (np.median(Angle(skypos.ra).degree),np.median((Angle(skypos.dec).degree)))
 		return healpix_pixel, pos
 
 	def plot_tod(self, data, outputname):
@@ -240,12 +322,22 @@ class tgi:
 
 		return data
 
-	def converttopol(self, data, ordering=[0,1,2,3]):
-		newdata = data
-		newdata[0] = (data[ordering[0]] + data[ordering[1]]) / 2.0
-		newdata[1] = (data[ordering[0]] - data[ordering[1]]) / 2.0
-		newdata[2] = (data[ordering[2]] - data[ordering[3]]) / 2.0
-		newdata[3] = (data[ordering[2]] + data[ordering[3]]) / 2.0
+	def converttopol(self, data, ordering=[0,1,2,3],pa=[]):
+		newdata = np.zeros(np.shape(data))
+		newdata[0] = (data[ordering[0],:] + data[ordering[1],:])# / 2.0
+		newdata[1] = (data[ordering[0],:] - data[ordering[1],:])# / 2.0
+		newdata[2] = (data[ordering[2],:] - data[ordering[3],:])# / 2.0
+		newdata[3] = (data[ordering[2],:] + data[ordering[3],:])# / 2.0
+
+		if len(pa) > 0:
+			# ang = pa
+			ang = 2.0*pa #* 3.1415/180.0
+			print(ang)
+			Q = newdata[1,:]*np.cos(ang) + newdata[2,:]*np.sin(ang)
+			U = -newdata[1,:]*np.sin(ang) + newdata[2,:]*np.cos(ang) 
+			newdata[1] = Q
+			newdata[2] = U
+
 		return newdata
 
 
@@ -257,47 +349,72 @@ class tgi:
 		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
 
 		# Calculate the Galactic Healpix pixels and the central position from az/el
-		healpix_pixel, centralpos = self.calc_positions(az, el, jd)
+		skypos,pa = self.calc_positions(az, el, jd)
+		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
+
+		self.plot_tod(skypos.ra,self.outdir+'/'+prefix+'/plot_ra.png')
+		self.plot_tod(skypos.dec,self.outdir+'/'+prefix+'/plot_dec.png')
+		self.plot_tod(pa,self.outdir+'/'+prefix+'/plot_pa.png')
+		# exit()
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
+			# Get the pixel info
+			pixinfo = self.get_pixel_info(jd[0][0]+self.jd_ref,pix+1)
+			print(pixinfo)
+			if pixinfo == []:
+				# We don't have a good pixel, skip it
+				continue
+			if pixinfo['pixel'] <= 0:
+				# Pixel isn't a pixel
+				continue
+
 			for det in detrange:
 
-				# Do we want to change from phase to I1,Q,U,I2?
-				if dopol:
-					# Different for TGI and FGI...
-					if det == 0:
-						ordering = [0,1,2,3]
-					elif det == 1:
-						ordering = [1,2,3,0]
-					elif det == 2:
-						ordering = [2,3,0,1]
-					elif det == 3:
-						ordering = [3,0,1,2]
-					# if pix > 10:
-					# 	ordering = [0,1,2,3]
-					# else:
-					# 	ordering = [0,2,1,3]
-					data[det][pix] = self.converttopol(data[det][pix],ordering=ordering)
-
 				for j in phaserange:
-
-					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
+					print(j)
 					if plottods:
 						# Plot some tods
-						self.plot_tod(data[det][pix][j][:], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
-						self.plot_tod(data[det][pix][j][0:5000],self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
-
+						self.plot_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
+						self.plot_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
 					# Do an FFT. Warning, this can slow things down quite a bit.
 					if dofft:
 						param_est, sigma_param_est = self.plot_fft(data[det][pix][j][0:10000],self.outdir+'/'+prefix+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_fit.png',samplerate=1000)
 						print(str(param_est[0]) + " " + str(sigma_param_est[0]) + " " + str(param_est[1]) + " " + str(sigma_param_est[1]) + " " + str(param_est[2]) + " " + str(sigma_param_est[2]))
-
 					data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
+					if plottods:
+						self.plot_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						self.plot_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
+
+				# Do we want to change from phase to I1,Q,U,I2?
+				if dopol:
+					if pixinfo['tgi'] == 1:
+						# if det == 0:
+						ordering = [0,1,2,3]
+						# elif det == 1:
+						# 	ordering = [1,2,3,0]
+						# elif det == 2:
+						# 	ordering = [2,3,0,1]
+						# elif det == 3:
+						# 	ordering = [3,0,1,2]
+					else:
+						# if det == 0:
+						ordering = [0,2,1,3]
+						# elif det == 1:
+						# 	ordering = [2,1,3,0]
+						# elif det == 2:
+						# 	ordering = [1,3,0,2]
+						# elif det == 3:
+						# 	ordering = [3,0,2,1]
+
+					data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa)
+
+				for j in phaserange:
+					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
 
 					if plottods:
-						self.plot_tod(data[det][pix][0][10:], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						self.plot_tod(data[det][pix][0][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
+						self.plot_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
+						self.plot_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
 
 					skymap = np.zeros(self.npix, dtype=np.float)
 					hitmap = np.zeros(self.npix, dtype=np.float)
@@ -388,7 +505,7 @@ class tgi:
 							option = 1
 						else:
 							option = 0
-						data[det][pix] = self.converttopol(data[det][pix],option=option)
+						# data[det][pix] = self.converttopol(data[det][pix],option=option)
 
 					for j in phaserange:
 						data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
@@ -429,7 +546,7 @@ class tgi:
 				plt.clf()
 		return
 
-	def combine_sky_maps(self,skymaps,hitmaps,outputname,centralpos=(0,0)):
+	def combine_sky_maps(self,skymaps,hitmaps,outputname,centralpos=(0,0),plotlimit=0.0):
 
 		skymap = np.zeros(self.npix, dtype=np.float)
 		hitmap = np.zeros(self.npix, dtype=np.float)
@@ -458,7 +575,10 @@ class tgi:
 		hp.write_map(outputname+'_hitmap.fits',hitmap,overwrite=True)
 		hp.mollview(hitmap)
 		plt.savefig(outputname+'_hitmap.png')
-		hp.gnomview(skymap,rot=centralpos,reso=5,min=-0.0002,max=0.0002)
+		if plotlimit != 0.0:
+			hp.gnomview(skymap,rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
+		else:
+			hp.gnomview(skymap,rot=centralpos,reso=5)
 		plt.savefig(outputname+'_zoom.png')
 		plt.close()
 		plt.clf()
