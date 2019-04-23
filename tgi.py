@@ -82,9 +82,9 @@ class tgi:
 		jds = []
 		arrays = []
 		for i in range(1,500):
-			print(prefix+str(i)+'.txt')
+			print(prefix+format(i, '03d')+'.txt')
 			try:
-				jd, array = self.read_pixel_masterfile(prefix+str(i)+'.txt')
+				jd, array = self.read_pixel_masterfile(prefix+format(i, '03d')+'.txt')
 			except:
 				break
 			jds.append(jd)
@@ -96,7 +96,7 @@ class tgi:
 	def get_pixel_info(self, jd, das):
 		print(jd)
 		print(das)
-		# print(self.pixeljds)
+		print(self.pixeljds)
 		pixel_jd = [x for x in self.pixeljds if x <= jd][-1]
 		# print(pixel_jd)
 		pixel_id = self.pixeljds.index(pixel_jd)
@@ -332,7 +332,7 @@ class tgi:
 		if len(pa) > 0:
 			# ang = pa
 			ang = 2.0*pa #* 3.1415/180.0
-			print(ang)
+			# print(ang)
 			Q = newdata[1,:]*np.cos(ang) + newdata[2,:]*np.sin(ang)
 			U = -newdata[1,:]*np.sin(ang) + newdata[2,:]*np.cos(ang) 
 			newdata[1] = Q

@@ -31,7 +31,7 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 # dt = np.dtype([('time', [('min', int), ('sec', int)]),('temp', float)])
 
 # run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote')
-run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/ qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
+run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
 
 # pixelinfo = run.get_pixel_info(2457679.0,16)
 # print(pixelinfo)
@@ -43,7 +43,7 @@ run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/User
 # exit()
 # run.analyse_tod('CRAB-190311-1728',numfiles=1,pixelrange=[3,4,5,21,22,23,24],detrange=[0],dopol=True)
 # exit()
-run.analyse_tod('CRAB-190409-2029',dopol=True)
+run.analyse_tod('CRAB-190409-2029',dopol=True,detrange=[0])
 exit()
 # tgi.analyse_tod('testdata/CRAB-190410-1529',numfiles=14)
 # run.analyse_tod('CRAB-190410-2025',pixelrange=[23,24],detrange=[0],plotlimit=0.001,numfiles=50,dopol=True)
@@ -77,14 +77,10 @@ if 1:
 
 exit()
 
-# 2019-04-11
-pixelrange=[3,4,5,21,22,23,24]
-
 datasets = ['HAZE-190411-0238','CYGNUS-190411-0452','HAZE-190411-0626','CASS-190411-0840','CYGNUS-190411-0955','PERSEUS-190411-1134','PERSEUS-190411-1257','CASS-190411-1423','MOON-190411-1525','M42-190411-1631','PERSEUS-190411-1734','PERSEUS-190411-1858','CRAB-190411-2021']
-#'HAZE-190412-0234','CYGNUS-190412-0448','HAZE-190412-0622',
-datasets = ['CASS-190412-0836','CYGNUS-190412-0951','PERSEUS-190412-1131','PERSEUS-190412-1254','CASS-190412-1420']
+datasets = ['HAZE-190412-0234','CYGNUS-190412-0448','HAZE-190412-0622','CASS-190412-0836','CYGNUS-190412-0951','PERSEUS-190412-1131','PERSEUS-190412-1254','CASS-190412-1420']
 
 #run.analyse_tod('DIP000-190411-2120',pixelrange=[3,4,5,21,22,23,24],plotlimit=0.001)
 #run.analyse_tod('DIP000-190411-2143',pixelrange=[3,4,5,21,22,23,24],plotlimit=0.001)
 for dataset in datasets:
-	run.analyse_tod(dataset,pixelrange=pixelrange,plotlimit=0.001)
+	run.analyse_tod(dataset,plotlimit=0.001)
