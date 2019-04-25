@@ -202,14 +202,23 @@ class tgi:
 			pos = (np.median(Angle(skypos.ra).degree),np.median((Angle(skypos.dec).degree)))
 		return healpix_pixel, pos
 
-	def plot_tod(self, data, outputname):
-		plt.plot(data,'b.')
+	def plot_tod(self, data, outputname,formatstr='b.'):
+		plt.plot(data,formatstr)
 		plt.xlabel('Samples')
 		plt.ylabel('Power')
 		plt.savefig(outputname)
 		plt.close()
 		plt.clf()
 		return
+
+	# Plot the TODs against a given set of vals, e.g. az or el.
+	def plot_val_tod(self, val, data, outputname):
+		plt.plot(val,data,'b.')
+		plt.savefig(outputname)
+		plt.close()
+		plt.clf()
+		return
+
 
 	def plot_fft(self, data, outputname,samplerate=1000,numsmoothbins=50):
 		fft_w = np.fft.rfft(data)
@@ -553,8 +562,11 @@ class tgi:
 
 		nummaps = len(skymaps)
 		for i in range(0,nummaps):
-			inputmap = hp.read_map(skymaps[i])
-			inputhitmap = hp.read_map(hitmaps[i])
+			try:
+				inputmap = hp.read_map(skymaps[i])
+				inputhitmap = hp.read_map(hitmaps[i])
+			except:
+				continue
 			for j in range(0,self.npix):
 				if inputhitmap[j] > 0:
 					skymap[j] = skymap[j] + inputmap[j]*inputhitmap[j]
@@ -582,6 +594,136 @@ class tgi:
 		plt.savefig(outputname+'_zoom.png')
 		plt.close()
 		plt.clf()
+
+		return
+
+	def analyse_skydip(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50,minel=35.0,maxel=85.0,numelbins=100):
+		print(self.outdir+'/'+prefix)
+		self.ensure_dir(self.outdir+'/'+prefix)
+
+		# Read in the data
+		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
+
+		# Create a mask of the different elevation dips
+		tempmask = el[0].copy()
+		tempmask[tempmask < minel] = 0.
+		tempmask[tempmask > maxel] = 0.
+		self.plot_tod(tempmask,self.outdir+'/'+prefix+'/mask.pdf')
+		test = tempmask.copy()
+		# Find out whether we're going up or down in elevation
+		for i in range(1,len(test)):
+			if tempmask[i] != 0.:
+				if tempmask[i-1] < tempmask[i]:
+					test[i] = -1
+				else:
+					test[i] = 1
+		# To catch noisy bits in transitions, require that sets of testlen all have to have the same value
+		testlen = 10
+		for i in range(0,len((test/testlen)-testlen)):
+			if np.sum(np.abs(test[i*testlen:i*testlen+testlen])) != testlen:
+				test[i*testlen:i*testlen+testlen] = 0
+		# Count how many different sections we have, and update the mask so we can extract them.
+		count = 1
+		notzero = 0
+		for i in range(0,len(test)):
+			if test[i] != 0:
+				test[i] = test[i] * count
+				notzero = 1
+			else:
+				if notzero == 1:
+					count = count+1
+					notzero = 0
+		print(count)
+		self.plot_tod(test,self.outdir+'/'+prefix+'/mask_bit.pdf',formatstr='b')
+		# return
+
+		# Make maps for each pixel, detector, phase
+		for pix in pixelrange:
+			# Get the pixel info
+			pixinfo = self.get_pixel_info(jd[0][0]+self.jd_ref,pix+1)
+			print(pixinfo)
+			if pixinfo == []:
+				# We don't have a good pixel, skip it
+				continue
+			if pixinfo['pixel'] <= 0:
+				# Pixel isn't a pixel
+				continue
+
+			for det in detrange:
+
+				for j in phaserange:
+
+					if plottods:
+						# Do a plot of az vs. tod
+						self.plot_tod(data[det][pix][j],self.outdir+'/'+prefix+'/tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						self.plot_val_tod(az[det],data[det][pix][j],self.outdir+'/'+prefix+'/az_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						self.plot_val_tod(el[det],data[det][pix][j],self.outdir+'/'+prefix+'/el_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						self.plot_val_tod(az[det],el[det],self.outdir+'/'+prefix+'/az_el_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+
+
+					elbins = np.zeros((4,count,numelbins))
+					for i in range(1,count):
+
+						elstep = (maxel-minel)/float(numelbins)
+						stepmask = np.zeros(len(test))
+						stepmask[test == i] = 1
+						stepmask[test == -i] = 1
+						for k in range(0,numelbins):
+							elstepmin = minel+k*elstep
+							elstepmax = minel+(k+1)*elstep
+							elbins[0][i][k] = (elstepmin+elstepmax)/2.0
+							elmask = np.zeros(len(test))
+							elmask[el[det] > elstepmin] = elmask[el[det] > elstepmin] + 0.5
+							elmask[el[det] < elstepmax] = elmask[el[det] < elstepmax] + 0.5
+							elmask[elmask < 1] = 0
+							elbins[1][i][k] = np.mean(data[det][pix][j][stepmask*elmask==1])
+							elbins[2][i][k] = np.sum(data[det][pix][j][stepmask*elmask==1])
+							elbins[3][i][k] = np.std(data[det][pix][j][stepmask*elmask==1])
+						# print(elbins[0])
+						self.plot_val_tod(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+						self.plot_val_tod(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+
+
+					for i in range(1,count):
+						if i in test:
+							plt.plot(elbins[0][i],elbins[1][i],'b')
+						else:
+							plt.plot(elbins[0][i],elbins[1][i],'r')
+					plt.xlabel('Elevation')
+					plt.ylabel('Power')
+					plt.savefig(self.outdir+'/'+prefix+'/average_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.close()
+					plt.clf()
+					for i in range(1,count):
+						if i in test:
+							plt.plot(elbins[0][i],elbins[3][i],'b')
+						else:
+							plt.plot(elbins[0][i],elbins[3][i],'r')
+					plt.xlabel('Elevation')
+					plt.ylabel('Power')
+					plt.savefig(self.outdir+'/'+prefix+'/std_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.close()
+					plt.clf()
+
+
+					for i in range(1,count):
+						newmax=1.0
+						newmin=0.0
+						max=np.max(elbins[1][i])
+						min=np.min(elbins[1][i])
+						toplot = (newmax-newmin)/(max-min)*(elbins[1][i]-max)+newmax
+						if i in test:
+							plt.plot(elbins[0][i],toplot,'b',alpha=0.5)
+						else:
+							plt.plot(elbins[0][i],toplot,'r',alpha=0.5)
+					plt.xlabel('Elevation')
+					plt.ylabel('Power')
+					plt.savefig(self.outdir+'/'+prefix+'/average_combine_norm_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.close()
+					plt.clf()
+
+					return
+
 
 		return
 

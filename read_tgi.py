@@ -33,6 +33,9 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 # run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote')
 run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
 
+run.analyse_skydip('DIP000-190411-2120',detrange=[0],phaserange=[0])
+exit()
+
 # pixelinfo = run.get_pixel_info(2457679.0,16)
 # print(pixelinfo)
 # print(pixelinfo['fp'])
@@ -43,8 +46,8 @@ run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/User
 # exit()
 # run.analyse_tod('CRAB-190311-1728',numfiles=1,pixelrange=[3,4,5,21,22,23,24],detrange=[0],dopol=True)
 # exit()
-run.analyse_tod('CRAB-190409-2029',dopol=True,detrange=[0])
-exit()
+# run.analyse_tod('CRAB-190409-2029',dopol=True,detrange=[0])
+# exit()
 # tgi.analyse_tod('testdata/CRAB-190410-1529',numfiles=14)
 # run.analyse_tod('CRAB-190410-2025',pixelrange=[23,24],detrange=[0],plotlimit=0.001,numfiles=50,dopol=True)
 # run.analyse_tod('CRAB-190410-2025',pixelrange=[3,4,5,21,22,23,24],plotlimit=0.001,numfiles=1)
@@ -52,13 +55,15 @@ exit()
 # 	run.combine_sky_maps(['/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_4_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_5_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_6_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_24_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_25_1_'+str(i)+'.fits'],['/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_4_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_5_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_6_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_24_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_25_1_'+str(i)+'.fits'],'/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/combined_'+str(i),centralpos=(184,-5))
 
 # run.analyse_tod('MOON-180919-1806',plotlimit=0.002,dopol=True)
-run.analyse_tod('MOON-180921-2035',plotlimit=0.002,dopol=True)
+# run.analyse_tod('MOON-180921-2035',plotlimit=0.002,dopol=True)
 
 if 1:
-	name = 'MOON-180919-1806'
-	centralpos=(299,-20)
-	# name = 'MOON-180921-2035'
-	# centralpos=(37,-44)
+	# name = 'MOON-180919-1806'
+	# centralpos=(299,-20)
+	name = 'MOON-180921-2035'
+	centralpos=(325,-16)
+	name = 'CRAB-190409-2029'
+	centralpos=(84,22)
 	for i in range(1,5):
 		if i == 2 or i == 3:
 			plotlimit = 0.0001
