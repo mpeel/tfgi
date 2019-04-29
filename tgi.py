@@ -34,6 +34,17 @@ def compute_residuals(param, data, freq):
 	residual = np.log(data / model)
 	return residual
 
+def fit_skydip(el, param):
+	A, B, C = param
+	# print(A)
+	# print(B)
+	# print(el)
+	return A + B/(np.sin(el*np.pi/180.0)) + C*el
+
+def compute_residuals_skydip(param, el, data):
+	model = fit_skydip(el, param)
+	residual = data - model
+	return residual
 
 class tgi:
 	def __init__(self,indir="/net/nas/proyectos/quijote2",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt"):
@@ -219,6 +230,27 @@ class tgi:
 		plt.clf()
 		return
 
+	# Plot a skydip with a fit
+	def plot_skydip(self,el,data,outputname):
+		# Fit the skydip
+		params = [1,1,0]
+		param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_skydip, params, args=(el, data),full_output=True)
+		sigma_param_est = np.sqrt(np.diagonal(cov_x))
+		# Now plot things
+		plt.plot(el,data,'b.')
+		mesg_fit = (
+		r'$A={:5.3g}\pm{:3.2g}$'.format(
+			param_est[0], sigma_param_est[0]) + ','
+		r'$B={:5.3f}\pm{:3.2f}$'.format(
+			param_est[1], sigma_param_est[1]) + ','
+		r'     $C={:5.3f}\pm{:3.2f}$'.format(
+			param_est[2], sigma_param_est[2]))
+		plt.plot(el,fit_skydip(el,param_est),'g',label="Fit: " + mesg_fit)
+		plt.legend(prop={'size':8})
+		plt.savefig(outputname)
+		plt.close()
+		plt.clf()
+		return param_est
 
 	def plot_fft(self, data, outputname,samplerate=1000,numsmoothbins=50):
 		fft_w = np.fft.rfft(data)
@@ -353,6 +385,11 @@ class tgi:
 	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50):
 		print(self.outdir+'/'+prefix)
 		self.ensure_dir(self.outdir+'/'+prefix)
+
+		if 'DIP' in prefix:
+			# We have a sky dip. Run the routine to analyse that rather than this routine.
+			self.analyse_skydip(prefix,pixelrange=pixelrange,detrange=detrange,phaserange=phaserange,quiet=quiet,plottods=plottods)
+			return
 
 		# Read in the data
 		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
@@ -609,33 +646,32 @@ class tgi:
 		tempmask[tempmask < minel] = 0.
 		tempmask[tempmask > maxel] = 0.
 		self.plot_tod(tempmask,self.outdir+'/'+prefix+'/mask.pdf')
-		test = tempmask.copy()
+		skydip_mask = tempmask.copy()
 		# Find out whether we're going up or down in elevation
-		for i in range(1,len(test)):
+		for i in range(1,len(skydip_mask)):
 			if tempmask[i] != 0.:
 				if tempmask[i-1] < tempmask[i]:
-					test[i] = -1
+					skydip_mask[i] = -1
 				else:
-					test[i] = 1
+					skydip_mask[i] = 1
 		# To catch noisy bits in transitions, require that sets of testlen all have to have the same value
 		testlen = 10
-		for i in range(0,len((test/testlen)-testlen)):
-			if np.sum(np.abs(test[i*testlen:i*testlen+testlen])) != testlen:
-				test[i*testlen:i*testlen+testlen] = 0
+		for i in range(0,len((skydip_mask/testlen)-testlen)):
+			if np.sum(np.abs(skydip_mask[i*testlen:i*testlen+testlen])) != testlen:
+				skydip_mask[i*testlen:i*testlen+testlen] = 0
 		# Count how many different sections we have, and update the mask so we can extract them.
-		count = 1
+		num_skydips = 1
 		notzero = 0
-		for i in range(0,len(test)):
-			if test[i] != 0:
-				test[i] = test[i] * count
+		for i in range(0,len(skydip_mask)):
+			if skydip_mask[i] != 0:
+				skydip_mask[i] = skydip_mask[i] * num_skydips
 				notzero = 1
 			else:
 				if notzero == 1:
-					count = count+1
+					num_skydips = num_skydips+1
 					notzero = 0
-		print(count)
-		self.plot_tod(test,self.outdir+'/'+prefix+'/mask_bit.pdf',formatstr='b')
-		# return
+		# print(num_skydips)
+		self.plot_tod(skydip_mask,self.outdir+'/'+prefix+'/mask_bit.pdf',formatstr='b')
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
@@ -650,7 +686,6 @@ class tgi:
 				continue
 
 			for det in detrange:
-
 				for j in phaserange:
 
 					if plottods:
@@ -660,32 +695,31 @@ class tgi:
 						self.plot_val_tod(el[det],data[det][pix][j],self.outdir+'/'+prefix+'/el_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
 						self.plot_val_tod(az[det],el[det],self.outdir+'/'+prefix+'/az_el_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
 
-
-					elbins = np.zeros((4,count,numelbins))
-					for i in range(1,count):
+					# Plot the individual skydips
+					elbins = np.zeros((4,num_skydips,numelbins))
+					for i in range(1,num_skydips):
 
 						elstep = (maxel-minel)/float(numelbins)
-						stepmask = np.zeros(len(test))
-						stepmask[test == i] = 1
-						stepmask[test == -i] = 1
+						stepmask = np.zeros(len(skydip_mask))
+						stepmask[skydip_mask == i] = 1
+						stepmask[skydip_mask == -i] = 1
 						for k in range(0,numelbins):
 							elstepmin = minel+k*elstep
 							elstepmax = minel+(k+1)*elstep
 							elbins[0][i][k] = (elstepmin+elstepmax)/2.0
-							elmask = np.zeros(len(test))
+							elmask = np.zeros(len(skydip_mask))
 							elmask[el[det] > elstepmin] = elmask[el[det] > elstepmin] + 0.5
 							elmask[el[det] < elstepmax] = elmask[el[det] < elstepmax] + 0.5
 							elmask[elmask < 1] = 0
 							elbins[1][i][k] = np.mean(data[det][pix][j][stepmask*elmask==1])
 							elbins[2][i][k] = np.sum(data[det][pix][j][stepmask*elmask==1])
 							elbins[3][i][k] = np.std(data[det][pix][j][stepmask*elmask==1])
-						# print(elbins[0])
-						self.plot_val_tod(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-						self.plot_val_tod(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+						self.plot_skydip(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+						self.plot_skydip(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
 
-
-					for i in range(1,count):
-						if i in test:
+					# Combine the sky dips into one plot
+					for i in range(1,num_skydips):
+						if i in skydip_mask:
 							plt.plot(elbins[0][i],elbins[1][i],'b')
 						else:
 							plt.plot(elbins[0][i],elbins[1][i],'r')
@@ -694,46 +728,298 @@ class tgi:
 					plt.savefig(self.outdir+'/'+prefix+'/average_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
 					plt.close()
 					plt.clf()
-					for i in range(1,count):
-						if i in test:
+					# Do the same for the standard deviations
+					for i in range(1,num_skydips):
+						if i in skydip_mask:
 							plt.plot(elbins[0][i],elbins[3][i],'b')
 						else:
 							plt.plot(elbins[0][i],elbins[3][i],'r')
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')
+					plt.legend(prop={'size':8})
 					plt.savefig(self.outdir+'/'+prefix+'/std_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
 					plt.close()
 					plt.clf()
 
-
-					for i in range(1,count):
+					# Do a fit to the data, and plot that along with the normalized data
+					tofit_x = []
+					tofit_y = []
+					for i in range(1,num_skydips):
 						newmax=1.0
 						newmin=0.0
 						max=np.max(elbins[1][i])
 						min=np.min(elbins[1][i])
 						toplot = (newmax-newmin)/(max-min)*(elbins[1][i]-max)+newmax
-						if i in test:
+						tofit_x.append(elbins[0][i][:])
+						tofit_y.append(toplot[:])
+						if i in skydip_mask:
 							plt.plot(elbins[0][i],toplot,'b',alpha=0.5)
 						else:
 							plt.plot(elbins[0][i],toplot,'r',alpha=0.5)
+					tofit_x = np.array(tofit_x)
+					tofit_y = np.array(tofit_y)
+					params = [1,1,0]
+					# print(elbins[0][1])
+					# print(tofit_x)
+					# print(tofit_y)
+					# print(np.shape(tofit_x.flatten()))
+					param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_skydip, params, args=(tofit_x.flatten(), tofit_y.flatten()),full_output=True)
+					sigma_param_est = np.sqrt(np.diagonal(cov_x))
+					# print(param_est)
+					skydip_fitted = fit_skydip(elbins[0][1],param_est)
+					mesg_fit = (
+					r'$A={:5.3g}\pm{:3.2g}$'.format(
+						param_est[0], sigma_param_est[0]) + ','
+					r'$B={:5.3f}\pm{:3.2f}$'.format(
+						param_est[1], sigma_param_est[1]) + ','
+					r'     $C={:5.3f}\pm{:3.2f}$'.format(
+						param_est[2], sigma_param_est[2]))
+					plt.plot(elbins[0][1],skydip_fitted,'g',label="Fit: " + mesg_fit)
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')
+					plt.legend(prop={'size':8})
 					plt.savefig(self.outdir+'/'+prefix+'/average_combine_norm_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
 					plt.close()
 					plt.clf()
 
-					return
+
+					# Plot the residuals after subtracting the best fit
+					for i in range(1,num_skydips):
+						newmax=1.0
+						newmin=0.0
+						max=np.max(elbins[1][i])
+						min=np.min(elbins[1][i])
+						toplot = (newmax-newmin)/(max-min)*(elbins[1][i]-max)+newmax
+						toplot = toplot - skydip_fitted
+						if i in skydip_mask:
+							plt.plot(elbins[0][i],toplot,'b',alpha=0.5)
+						else:
+							plt.plot(elbins[0][i],toplot,'r',alpha=0.5)
+
+					plt.xlabel('Elevation')
+					plt.ylabel('Power (fit subtracted)')
+					plt.savefig(self.outdir+'/'+prefix+'/average_combine_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.close()
+					plt.clf()
 
 
 		return
 
-	# Originally by Roger, 'read_sci_FTGI_2018.py'
-	def get_sci(self, filename,quiet=False):
-		data=np.empty(shape=(124,60*4000),dtype=float)
+	# Originally by Roger, 'read_sci_FTGI_multi2018.py'
+	def get_sci(self, filenames,quiet=False):
+		numfiles = len(filenames)
+		data=np.empty(shape=(124,60*4000*numfiles),dtype=float)
 		dat=np.empty(4000,dtype='i8')
-		with open(filename, "rb") as f:
-			for k in range(60):
-				for i in range(124):
+		for j in range(0,numfiles):
+			print(filenames[j])
+			with open(filenames[j], "rb") as f:
+				for k in range(60):
+					for i in range(124):
+						campo1= np.fromfile(f,count=1, dtype='>a2')
+						campo2= np.fromfile(f,count=1, dtype='>u2')            
+						campo3= np.fromfile(f,count=1, dtype='>u2')
+						campo4= np.fromfile(f,count=1, dtype='>u1')
+						campo5= np.fromfile(f,count=1, dtype='>u1')
+						campo6= np.fromfile(f,count=1, dtype='>u1')
+						campo7= np.fromfile(f,count=1, dtype='>u1')
+						Tstamp= np.fromfile(f,count=1, dtype='>u4')
+						Time=   np.fromfile(f,count=1, dtype='>u4')
+						SID=    np.fromfile(f,count=1, dtype='>u2')
+						AqErr=  np.fromfile(f,count=1, dtype='>u1')
+						channel_ID=  np.fromfile(f,count=1, dtype='>u1')
+						cal_flag=  np.fromfile(f,count=1, dtype='>u1')
+						cal_sw=  np.fromfile(f,count=1, dtype='>u1')
+						ph_sw=  np.fromfile(f,count=1, dtype='>u1') 
+						repuesto1=  np.fromfile(f,count=1, dtype='>u1') 
+						Nphstates=  np.fromfile(f,count=1, dtype='>u4')
+						PHseq= np.fromfile(f,count=16, dtype='>u1')
+						Processtype= np.fromfile(f,count=1, dtype='>u1')
+						repuesto2= np.fromfile(f,count=1, dtype='>u1')
+						Pack_count=  np.fromfile(f,count=1, dtype='>u2')
+						Sc_factor=np.fromfile(f,count=1, dtype='>f8')
+						Samprate=  np.fromfile(f,count=1, dtype='>u4')
+						NSample=  np.fromfile(f,count=1, dtype='u4')
+						dat= np.fromfile(f,count=4000, dtype='>i4')
+						dat=dat*Sc_factor
+						if len(dat) != 0:
+							data[i,(j*240000)+(k*4000):(j*240000)+(k*4000)+4000]=dat
+						
+						if not quiet:
+							print(j,k,i)
+							print('campo1 = ' + str(campo1))
+							print('campo2 = ' + str(campo2))
+							print('campo3 = ' + str(campo3))
+							print('campo4 = ' + str(campo4))
+							print('campo5 = ' + str(campo5))
+							print('campo6 = ' + str(campo6))
+							print('campo7 = ' + str(campo7))
+							print('Tstamp = ' + str(Tstamp))
+							print('Time = ' + str(Time))
+							print('SID = ' + str(SID))
+							print('AqErr = ' + str(AqErr)) 
+							print('channel_ID = ' + str(channel_ID))
+							print('cal_flag = ' + str(cal_flag))
+							print('cal__sw = ' + str(cal_sw))
+							print('ph__sw = ' + str(ph_sw) + ' (1- 16KHz, 2- 8KHz)')
+							print('repuesto1 = ' + str(repuesto1))
+							print('Nphstates = ' + str(Nphstates))
+							print('Phase sequence = ' + str(PHseq))
+							print('Process type = ' + str(Processtype))
+							print('repuesto2 = ' + str(repuesto2))
+							print('packet counter = ' + str(Pack_count))
+							print('Scale factor = ' + str(Sc_factor))
+							print('Sampling rate = ' + str(Samprate))
+							print('No of samples = ' + str(NSample))
+							print(dat[0:10])
+		return data
+
+	# Originally by Roger, 'plot_cal_data_sci_FGI_multi2018.py'
+	def plot_sci(self, data,channels=range(0,30),pixels=range(0,30)):
+		dt2=data
+		ds=int(data.size/(8*124))
+		fls=int(ds/30000)
+		# DAS=int(input("what DAS channel would you like to calibrate?"))
+		for channel in range(0,len(channels)):
+			DAS = channels[channel]
+			pixel = pixels[channel]
+			chan=DAS*4-4
+			"reshape array into phase sum cycles (8 4ON/4OFF) and then take Cal OFF from CAL ON at 4KHz/125Hz"
+			"There is an ambiguity in the order of the CALON/CALOFF. It changes sign after 4 s"
+			dt3=np.reshape(dt2,(124,ds,8))
+			if pixel >= 40:
+				# FGI
+				dt4=dt3[:,:,0:4]-dt3[:,:,4:]
+			else:
+				# TGI
+				dt4=dt3[:,:,4:]-dt3[:,:,0:4]
+			""
+			"Calculate the mean values over a given phase state for all phase states in the file"      
+			phsum0=dt4[chan:chan+4,:,0]
+			if pixel >= 40:
+				# FGI
+				phsum90=dt4[chan:chan+4,:,1] 
+				phsum180=dt4[chan:chan+4,:,2]  
+			else:
+				# TGI
+				phsum180=dt4[chan:chan+4,:,1] 
+				phsum90=dt4[chan:chan+4,:,2]  
+
+			phsum270=dt4[chan:chan+4,:,3]
+			"Calculate I, Q and U "
+			I=(phsum0+phsum180+phsum90+phsum270)/2
+			Q=phsum0-phsum180
+			U=phsum90-phsum270
+			"Calculate the polar magnitude"
+			L=np.absolute(Q+U*1j)
+			"Caculate the polar angle"
+			"L_ang=np.angle(Q+U*1j,deg=1)"
+			L_ang=(0.5*np.arctan2(U,Q)* 180 / np.pi)+90.
+
+			# Do some plots of those
+			# print(np.shape(I))
+			# print(len(I))
+			# for j in range(0,4):
+			# 	plt.plot(I[j,0:1000])
+			# 	plt.plot(Q[j,0:1000])
+			# 	plt.plot(U[j,0:1000])
+			# 	plt.savefig('plot_IQU_'+str(DAS)+'_'+str(j)+'.png')
+			# 	plt.clf()
+
+			# fft_w = scipy.fftpack.rfft(I[0,:])
+			# fft_f = scipy.fftpack.rfftfreq(len(I[0,:]), 1)
+			# fft_spectrum = fft_w**2
+			# plt.plot(fft_f, fft_w)
+			# plt.xscale("log")
+			# plt.yscale("log")
+			# plt.savefig('plot_I_'+str(DAS)+'_fft.png')
+			# plt.clf()
+
+
+
+			"Calculate file statistics in terms of polar magnitude and angle"
+			I_mean=np.empty(shape=(4,fls),dtype=float)
+			L_mean=np.empty(shape=(4,fls),dtype=float)
+			L_mean_rms=np.empty(shape=(4,fls),dtype=float)
+			L_ang_mean=np.empty(shape=(4,fls),dtype=float)
+			L_ang_rms=np.empty(shape=(4,fls),dtype=float)
+			for k in range(fls):
+				I_mean[:,k]=np.mean(I[:,(30000*k+10000):(30000*k+20000)],axis=1)
+				L_mean[:,k]=np.mean(L[:,(30000*k+10000):(30000*k+20000)],axis=1)
+				L_mean_rms[:,k]=np.std(L[:,(30000*k+10000):(30000*k+20000)],axis=1)
+				L_ang_mean[:,k]=np.mean(L_ang[:,(30000*k+10000):(30000*k+20000)],axis=1)
+				L_ang_rms[:,k]=np.std(L_ang[:,(30000*k+10000):(30000*k+20000)],axis=1)
+			"Print out in table format using pandas"
+			for k in range(4):
+				p_ang=["-45º","-22.5º","0º","22.5º","45º"]
+				v_out=[k+1,k+1,k+1,k+1,k+1]
+				P_stats=list(zip(v_out,p_ang,L_mean[k,:],L_mean_rms[k,:],L_ang_mean[k,:],L_ang_rms[k,:]))
+				P_stats_table=pd.DataFrame(data=P_stats,columns=["Vout","Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms"])
+				print(P_stats_table)  
+			"Plot data on screen and into a pdf file"
+			fig=plt.figure()
+			fig.suptitle('Scientific data for Pixel '+str(pixel))
+			plt.subplot(2,2,1)
+			tim=(np.arange(4)+1)*2
+			tim1=np.arange(8)+1
+			tim2=np.arange(ds)/125              
+			plt.grid(True)
+			if pixel >= 40:
+				plt.xticks([0,1,2,3,4,5,6,7],('0','90','180','270','0','90','180','270'))
+			else:
+				plt.xticks([0,1,2,3,4,5,6,7],('0','180','90','270','0','180','90','270'))
+			plt.plot(dt3[chan,0,:],label='V1')
+			plt.plot(dt3[chan+1,0,:],label='V2')
+			plt.plot(dt3[chan+2,0,:],label='V3')
+			plt.plot(dt3[chan+3,0,:],label='V4')
+			plt.legend()
+			plt.ylabel('voltage output, V')
+			plt.xlabel('Phase Switch angle, deg')
+			plt.title('CalOn/CalOff Cycle')
+			plt.subplot(2,2,2)
+			plt.grid(True)
+			if pixel > 40:
+				plt.xticks([0,1,2,3],('0','90','180','270'))
+			else:
+				plt.xticks([0,1,2,3],('0','180','90','270'))
+			plt.plot(dt4[chan,0,:])
+			plt.plot(dt4[chan+1,0,:])
+			plt.plot(dt4[chan+2,0,:])
+			plt.plot(dt4[chan+3,0,:])
+			plt.ylabel('voltage output, V')
+			plt.xlabel('Phase Switch Angle, deg')
+			plt.title('Cal polar signal')
+			plt.subplot(2,2,3)
+			plt.grid(True)
+			plt.plot(tim2,L[0,:])
+			plt.plot(tim2,L[1,:])
+			plt.plot(tim2,L[2,:])
+			plt.plot(tim2,L[3,:])
+			plt.title('Detector polar magnitude')
+			plt.xlabel('time,s')
+			plt.ylabel('voltage, V')
+			plt.subplot(2,2,4)
+			plt.grid(True)
+			plt.yticks(np.arange(0,180,30))
+			plt.plot(tim2,L_ang[0,:])
+			plt.plot(tim2,L_ang[1,:])
+			plt.plot(tim2,L_ang[2,:])
+			plt.plot(tim2,L_ang[3,:])
+			plt.title('Detector polar Angle')
+			plt.xlabel('time,s')
+			plt.ylabel('angle, deg')
+			plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
+			fig.savefig('plot_sci_'+str(pixel)+'.pdf')
+			fig.clf()
+		return
+
+
+	# Originally by Roger, 'read_eng_FTGI_2018.py'
+	def get_eng(self, filenames,quiet=False):
+		data=np.empty(shape=(8,60*40*4000),dtype=float)
+		dat=np.empty(4000,dtype='i8')
+		with open(filenames, "rb") as f:
+			for k in range(60*40):
+				for ch in range(8):
 					campo1= np.fromfile(f,count=1, dtype='>a2')
 					campo2= np.fromfile(f,count=1, dtype='>u2')            
 					campo3= np.fromfile(f,count=1, dtype='>u2')
@@ -760,10 +1046,16 @@ class tgi:
 					NSample=  np.fromfile(f,count=1, dtype='u4')
 					dat= np.fromfile(f,count=4000, dtype='>i4')
 					dat=dat*Sc_factor
-					data[i,(k*4000):(k*4000)+4000]=dat
-					
+					data[ch,(k*4000):(k*4000)+4000]=dat
+					"""
+					Correct for calibration offset by taking off the first 80 phase states
+
+					for n in range(8):
+					   data[n-1,:]=np.roll(data[n-1,:],-80)          
+					   
+					"""
 					if not quiet:
-						print(k,i)      
+						print(k)      
 						print('campo1 = ' + str(campo1))
 						print('campo2 = ' + str(campo2))
 						print('campo3 = ' + str(campo3))
@@ -792,120 +1084,115 @@ class tgi:
 		return data
 
 	# Originally by Roger, 'plot_cal_data_sci_FGI_multi2018.py'
-	def plot_sci(self, data):
+	def plot_eng(self, data,pixel=0):
 		dt2=data
-		ds=int(data.size/(8*124))
-		fls=int(ds/30000)
-		# DAS=int(input("what DAS channel would you like to calibrate?"))
-		for DAS in range(1,30):
-			chan=DAS*4-4
-			"reshape array into phase sum cycles (8 4ON/4OFF) and then take Cal OFF from CAL ON at 4KHz/125Hz"
-			"There is an ambiguity in the order of the CALON/CALOFF. It changes sign after 4 s"
-			dt3=np.reshape(dt2,(124,ds,8))
-			dt4=dt3[:,:,4:]-dt3[:,:,0:4]
-			""
-			"Calculate the mean values over a given phase state for all phase states in the file"      
-			phsum0=dt4[chan:chan+4,:,0]
-			phsum180=dt4[chan:chan+4,:,1] 
-			phsum90=dt4[chan:chan+4,:,2]  
-			phsum270=dt4[chan:chan+4,:,3]
-			"Calculate I, Q and U "
-			I=(phsum0+phsum180+phsum90+phsum270)/2
-			Q=phsum0-phsum180
-			U=phsum90-phsum270
-			"Calculate the polar magnitude"
-			L=np.absolute(Q+U*1j)
-			"Caculate the polar angle"
-			"L_ang=np.angle(Q+U*1j,deg=1)"
-			L_ang=(0.5*np.arctan2(U,Q)* 180 / np.pi)+90.
+		"""
+		ns is the positive transition samples and ne the negative slope transition samples
+		that have been removed from the calculation
+		"""
+		ns=1
+		ne=1
+		"reshape array into phase cycles (640) and then take Cal OFF from CAL ON at 4KHz/125Hz"
+		dt3=np.reshape(dt2,(8,-1,1280))
+		# (DT4 calculation moved below)
+		""
+		"Reduce the phase states from 16 to 4 by summing equivalent states taking the positive"
+		" and negative transition samples out of the sumation"
+		if pixel >= 40:
+			# FGI
+			dt4=dt3[:,:,0:640]-dt3[:,:,640:]
+			ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
+			ph90=(dt4[:,:,40+ns:80-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,600+ns:640-ne])/4
+			ph180=(dt4[:,:,120+ns:160-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4 
+			ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,520+ns:560-ne])/4
+		else:
+			# TGI
+			dt4=dt3[:,:,640:]-dt3[:,:,0:640]
+			ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
+			ph180=(dt4[:,:,40+ns:80-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,520+ns:560-ne])/4
+			ph90=(dt4[:,:,120+ns:160-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4 
+			ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,600+ns:640-ne])/4
 
-			# Do some plots of those
-			# print(np.shape(I))
-			# print(len(I))
-			for j in range(0,4):
-				plt.plot(I[j,0:1000])
-				plt.plot(Q[j,0:1000])
-				plt.plot(U[j,0:1000])
-				plt.savefig('plot_IQU_'+str(DAS)+'_'+str(j)+'.png')
-				plt.clf()
+		"Calculate the mean values over a given phase state for all phase states in the file (equal to scientific data)"      
+		phsum0=np.mean(ph0,axis=2)
+		phsum90=np.mean(ph90,axis=2) 
+		phsum180=np.mean(ph180,axis=2)  
+		phsum270=np.mean(ph270,axis=2)
+		"Calculate Q and U "
+		I=(phsum0+phsum180+phsum90+phsum270)/2
+		Q=phsum0-phsum180
+		U=phsum90-phsum270
+		"Calculate the polar magnitude"
+		L=np.absolute(Q+U*1j)
+		"Caculate the polar angle"
+		"L_ang=np.angle(Q+U*1j,deg=1)"
+		L_ang=(0.5*np.arctan2(U,Q)* 180 / np.pi)+90.
+		"Calculate file statistics in terms of polar magnitude and angle"
+		I_mean=np.mean(I[0:4,:],axis=1)
+		L_mean=np.mean(L[0:4,:],axis=1)
+		L_mean_rms=np.std(L[0:4,:],axis=1)
+		L_ang_mean=np.mean(L_ang[0:4,500:6500],axis=1)
+		# If over 90 degrees, subtract 180 from it.
+		L_ang_mean[L_ang_mean > 90.0] = L_ang_mean[L_ang_mean > 90.0] - 180.0
 
-			fft_w = scipy.fftpack.rfft(I[0,:])
-			fft_f = scipy.fftpack.rfftfreq(len(I[0,:]), 1)
-			fft_spectrum = fft_w**2
-			plt.plot(fft_f, fft_w)
-			plt.xscale("log")
-			plt.yscale("log")
-			plt.savefig('plot_I_'+str(DAS)+'_fft.png')
-			plt.clf()
-
-
-
-			# "Calculate file statistics in terms of polar magnitude and angle"
-			# I_mean=np.empty(shape=(4,fls),dtype=float)
-			# L_mean=np.empty(shape=(4,fls),dtype=float)
-			# L_mean_rms=np.empty(shape=(4,fls),dtype=float)
-			# L_ang_mean=np.empty(shape=(4,fls),dtype=float)
-			# L_ang_rms=np.empty(shape=(4,fls),dtype=float)
-			# for k in range(fls):
-			#     I_mean[:,k]=np.mean(I[:,(30000*k+10000):(30000*k+20000)],axis=1)
-			#     L_mean[:,k]=np.mean(L[:,(30000*k+10000):(30000*k+20000)],axis=1)
-			#     L_mean_rms[:,k]=np.std(L[:,(30000*k+10000):(30000*k+20000)],axis=1)
-			#     L_ang_mean[:,k]=np.mean(L_ang[:,(30000*k+10000):(30000*k+20000)],axis=1)
-			#     L_ang_rms[:,k]=np.std(L_ang[:,(30000*k+10000):(30000*k+20000)],axis=1)
-			# "Print out in table format using pandas"
-			# for k in range(4):
-			#     p_ang=["-45º","-22.5º","0º","22.5º","45º"]
-			#     v_out=[k+1,k+1,k+1,k+1,k+1]
-			#     P_stats=list(zip(v_out,p_ang,L_mean[k,:],L_mean_rms[k,:],L_ang_mean[k,:],L_ang_rms[k,:]))
-			#     P_stats_table=pd.DataFrame(data=P_stats,columns=["Vout","Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms"])
-			#     print(P_stats_table)  
-			# "Plot data on screen and into a pdf file"
-			# fig=plt.figure()
-			# fig.suptitle('Scientific data  for Pixel 24')
-			# plt.subplot(2,2,1)
-			# tim=(np.arange(4)+1)*2
-			# tim1=np.arange(8)+1
-			# tim2=np.arange(ds)/125              
-			# plt.grid(True)
-			# plt.xticks([0,1,2,3,4,5,6,7],('0','180','90','270','0','180','90','270'))
-			# plt.plot(dt3[chan,0,:],label='V1')
-			# plt.plot(dt3[chan+1,0,:],label='V2')
-			# plt.plot(dt3[chan+2,0,:],label='V3')
-			# plt.plot(dt3[chan+3,0,:],label='V4')
-			# plt.legend()
-			# plt.ylabel('voltage output, V')
-			# plt.xlabel('Phase Switch angle, deg')
-			# plt.title('CalOn/CalOff Cycle')
-			# plt.subplot(2,2,2)
-			# plt.grid(True)
-			# plt.xticks([0,1,2,3],('0','180','90','270'))
-			# plt.plot(dt4[chan,0,:])
-			# plt.plot(dt4[chan+1,0,:])
-			# plt.plot(dt4[chan+2,0,:])
-			# plt.plot(dt4[chan+3,0,:])
-			# plt.ylabel('voltage output, V')
-			# plt.xlabel('Phase Switch Angle, deg')
-			# plt.title('Cal polar signal')
-			# plt.subplot(2,2,3)
-			# plt.grid(True)
-			# plt.plot(tim2,L[0,:])
-			# plt.plot(tim2,L[1,:])
-			# plt.plot(tim2,L[2,:])
-			# plt.plot(tim2,L[3,:])
-			# plt.title('Detector polar magnitude')
-			# plt.xlabel('time,s')
-			# plt.ylabel('voltage, V')
-			# plt.subplot(2,2,4)
-			# plt.grid(True)
-			# plt.yticks(np.arange(0,180,30))
-			# plt.plot(tim2,L_ang[0,:])
-			# plt.plot(tim2,L_ang[1,:])
-			# plt.plot(tim2,L_ang[2,:])
-			# plt.plot(tim2,L_ang[3,:])
-			# plt.title('Detector polar Angle')
-			# plt.xlabel('time,s')
-			# plt.ylabel('angle, deg')
-			# plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
-			# fig.savefig('plot_'+str(DAS)+'.pdf')
-			# fig.clf()
+		L_ang_rms=np.std(L_ang[0:4,500:6500],axis=1)
+		"Print out in table format using pandas"
+		V_out=["Vout1","Vout2","Vout3","Vout4"]
+		P_stats=list(zip(V_out,L_mean,L_mean_rms,L_ang_mean,L_ang_rms,np.abs(L_mean*100/I_mean)))
+		P_stats_table=pd.DataFrame(data=P_stats,columns=["Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms","%pol"])
+		print(P_stats_table)
+		"Plot data on screen and into a pdf file"
+		fig=plt.figure()
+		fig.suptitle('Engineering data for Pixel ' + str(pixel))
+		plt.subplot(2,2,1)
+		tim1=np.arange(1280)/160
+		tim2=np.arange(7500)/125              
+		plt.grid(True)
+		plt.plot(tim1,dt3[0,0,:],label='V1')
+		plt.plot(tim1,dt3[1,0,:],label='V2')
+		plt.plot(tim1,dt3[2,0,:],label='V3')
+		plt.plot(tim1,dt3[3,0,:],label='V4')
+		plt.legend()
+		plt.ylabel('voltage output, V')
+		plt.xlabel('time,msecs')
+		plt.title('polar signal')
+		plt.subplot(2,2,2)
+		plt.grid(True)
+		if pixel >= 40:
+			# FGI
+			plt.xticks([0,1,2,3],('0','90','180','270'))
+			plt.plot([phsum0[0,0],phsum90[0,0],phsum180[0,0],phsum270[0,0]])
+			plt.plot([phsum0[1,0],phsum90[1,0],phsum180[1,0],phsum270[1,0]])
+			plt.plot([phsum0[2,0],phsum90[2,0],phsum180[2,0],phsum270[2,0]])
+			plt.plot([phsum0[3,0],phsum90[3,0],phsum180[3,0],phsum270[3,0]])
+		else:
+			# TGI
+			plt.xticks([0,1,2,3],('0','180','90','270'))
+			plt.plot([phsum0[0,0],phsum180[0,0],phsum90[0,0],phsum270[0,0]])
+			plt.plot([phsum0[1,0],phsum180[1,0],phsum90[1,0],phsum270[1,0]])
+			plt.plot([phsum0[2,0],phsum180[2,0],phsum90[2,0],phsum270[2,0]])
+			plt.plot([phsum0[3,0],phsum180[3,0],phsum90[3,0],phsum270[3,0]])
+		plt.ylabel('voltage output, V')
+		plt.xlabel('phase state, deg.')
+		plt.title('scientific data polar signal')
+		plt.subplot(2,2,3)
+		plt.grid(True)
+		plt.plot(tim2,L[0,:])
+		plt.plot(tim2,L[1,:])
+		plt.plot(tim2,L[2,:])
+		plt.plot(tim2,L[3,:])
+		plt.title('Detector polar magnitude')
+		plt.xlabel('time,s')
+		plt.ylabel('voltage, volts')
+		plt.subplot(2,2,4)
+		plt.grid(True)
+		plt.title('Detector polar Angle')
+		plt.plot(tim2,L_ang[0,:])
+		plt.plot(tim2,L_ang[1,:])
+		plt.plot(tim2,L_ang[2,:])
+		plt.plot(tim2,L_ang[3,:])
+		plt.xlabel('time,s')
+		plt.ylabel('angle, deg.')
+		plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
+		fig.savefig('plot_eng_'+str(pixel)+'.pdf')
 		return
