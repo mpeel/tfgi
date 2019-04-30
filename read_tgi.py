@@ -24,40 +24,39 @@ import tgi
 # This is needed if you want to write out lots of plots
 mpl.rcParams['agg.path.chunksize'] = 10000
 
-run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
-# run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
+# run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
+run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
 
-pixels = [[1]]
-channels = [[17]]
-files = [['PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0000.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0001.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0002.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0003.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0004.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0005.sci2']]
+# run.analyse_skydip('DIP000-190411-2143',detrange=[0],phaserange=[0])
+# run.analyse_skydip('DIP000-190411-2120',dopol=True)#,detrange=[0],phaserange=[0])
+# exit()
+
+
+# pixels = [[1]]
+# channels = [[17]]
+# files = [['PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0000.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0001.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0002.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0003.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0004.sci2','PolCal_june_2018/June_22_2018/Pix1-18-06-22-10-25-28-0005.sci2']]
 # files = [['PolCal_june_2018/Pix1_cal-18-06-04-13-33-26-0000.sci2','PolCal_june_2018/Pix1_cal-18-06-04-13-33-26-0001.sci2','PolCal_june_2018/Pix1_cal-18-06-04-13-33-26-0002.sci2','PolCal_june_2018/Pix1_cal-18-06-04-13-33-26-0003.sci2','PolCal_june_2018/Pix1_cal-18-06-04-13-33-26-0004.sci2','PolCal_june_2018/Pix1_cal-18-06-04-13-33-26-0005.sci2']]
 
-# pixels = [[5],[17],[23],[26],[41],[42],[63]]
-# channels = [[25],[23],[24],[22],[4],[6],[5]]
-# files = [['testdata/'+'pix5_cal-19-04-09-13-14-17-0000.sci2','testdata/'+'pix5_cal-19-04-09-13-14-17-0001.sci2'],['testdata/'+'pix17_cal-19-04-09-12-56-16-0000.sci2','testdata/'+'pix17_cal-19-04-09-12-56-16-0001.sci2'],['testdata/'+'pix23_cal-19-04-09-13-33-21-0000.sci2','testdata/'+'pix23_cal-19-04-09-13-33-21-0001.sci2'],['testdata/'+'pix26_cal-19-04-09-11-49-35-0000.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0001.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0002.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0003.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0004.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0005.sci2'],['testdata/'+'Pix41_cal-19-04-10-11-31-14-0000.sci2','testdata/'+'Pix41_cal-19-04-10-11-31-14-0001.sci2'],['testdata/'+'Pix42_cal-19-04-10-12-07-14-0000.sci2','testdata/'+'Pix42_cal-19-04-10-12-07-14-0001.sci2'],['testdata/'+'Pix63_cal-19-04-10-11-48-14-0000.sci2','testdata/'+'Pix63_cal-19-04-10-11-48-14-0001.sci2']]
+## April 2019 calibration data
+
+# Run through the scientific data
+pixels = [[5],[17],[23],[26],[41],[42],[63]]
+fix_neg = [False,False,False,False,True,True,False]
+channels = [[25],[23],[24],[22],[4],[6],[5]]
+files = [['testdata/'+'pix5_cal-19-04-09-13-14-17-0000.sci2','testdata/'+'pix5_cal-19-04-09-13-14-17-0001.sci2'],['testdata/'+'pix17_cal-19-04-09-12-56-16-0000.sci2','testdata/'+'pix17_cal-19-04-09-12-56-16-0001.sci2'],['testdata/'+'pix23_cal-19-04-09-13-33-21-0000.sci2','testdata/'+'pix23_cal-19-04-09-13-33-21-0001.sci2'],['testdata/'+'pix26_cal-19-04-09-11-49-35-0000.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0001.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0002.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0003.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0004.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0005.sci2'],['testdata/'+'Pix41_cal-19-04-10-11-31-14-0000.sci2','testdata/'+'Pix41_cal-19-04-10-11-31-14-0001.sci2'],['testdata/'+'Pix42_cal-19-04-10-12-07-14-0000.sci2','testdata/'+'Pix42_cal-19-04-10-12-07-14-0001.sci2'],['testdata/'+'Pix63_cal-19-04-10-11-48-14-0000.sci2','testdata/'+'Pix63_cal-19-04-10-11-48-14-0001.sci2']]
 for i in range(0,len(pixels)):
 	print('Pixel '+str(pixels[i]))
 	data = run.get_sci(files[i],quiet=True)
-	run.plot_sci(data,channels=channels[i],pixels=pixels[i])
+	run.plot_sci(data,channels=channels[i],pixels=pixels[i],fix_neg=fix_neg[i])
 exit()
 
+# Run through the engineering data
 pixels = [5,17,23,26,41,42,63]
 files = ['pix5_cal-19-04-09-13-10-07-0000.eng2','pix17_cal-19-04-09-12-51-20-0000.eng2','pix23_cal-19-04-09-13-28-32-0000.eng2','pix26_cal-19-04-09-11-45-34-0000.eng2','Pix41_cal-19-04-10-11-26-25-0000.eng2','Pix42_cal-19-04-10-12-03-14-0000.eng2','Pix63_cal-19-04-10-11-43-50-0000.eng2']
 for i in range(0,len(pixels)):
 	print('Pixel '+str(pixels[i]))
 	data = run.get_eng('testdata/'+files[i],quiet=True)
 	run.plot_eng(data,pixel=pixels[i])
-exit()
-
-data = run.get_sci(['testdata/pix5_cal-19-04-09-13-14-17-0000.sci2','testdata/pix5_cal-19-04-09-13-14-17-0001.sci2'],quiet=False)
-run.plot_sci(data,channels=[25])
-# print(data)
-exit()
-# dt = np.dtype([('time', [('min', int), ('sec', int)]),('temp', float)])
-
-
-run.analyse_skydip('DIP000-190411-2143',detrange=[0],phaserange=[0])
-# run.analyse_skydip('DIP000-190411-2120',detrange=[0],phaserange=[0])
 exit()
 
 # pixelinfo = run.get_pixel_info(2457679.0,16)
