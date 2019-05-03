@@ -21,33 +21,18 @@ from astropy.coordinates import Angle
 from scipy.optimize import curve_fit
 import os
 import astroplan
+from tgi_functions import *
+from tgi_functions_read import *
+import logging
 
-def linfit(x, A, B):
-	return A*x+B
+def calc_beam_area(beam):
+	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
 
-def fit_kneefreq(freq, param):
-	sigma, fknee, alpha = param
-	return sigma**2 * (1 + (fknee / freq)**alpha)
-
-def compute_residuals(param, data, freq):
-	model = fit_kneefreq(freq, param)
-	residual = np.log(data / model)
-	return residual
-
-def fit_skydip(el, param):
-	A, B, C = param
-	# print(A)
-	# print(B)
-	# print(el)
-	return A + B/(np.sin(el*np.pi/180.0)) + C*el
-
-def compute_residuals_skydip(param, el, data):
-	model = fit_skydip(el, param)
-	residual = data - model
-	return residual
+def calc_Tsys(std,B,t):
+	return std*np.sqrt(B*t)
 
 class tgi:
-	def __init__(self,indir="/net/nas/proyectos/quijote2",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt"):
+	def __init__(self,indir="/net/nas/proyectos/quijote2",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt",polcalfileloc="/net/nas/proyectos/quijote2/etc/qt2_polcal."):
 		self.numpixels = 31
 		self.indir = indir
 		self.outdir = outdir
@@ -56,16 +41,28 @@ class tgi:
 		self.nside = 512
 		self.npix = hp.nside2npix(self.nside)
 		self.pixeljds, self.pixelarrays = self.read_pixel_masterfiles(pixelfileloc)
+		self.polcaljds, self.polcalarrays = self.read_pixel_masterfiles(polcalfileloc,usefloat=True)
+		# print(self.polcaljds, self.polcalarrays)
+		# exit()
 		self.pixelpositions = self.read_pixel_positions(pixelposfileloc)
 		self.apobserver = astroplan.Observer(latitude=28.300224*u.deg, longitude=-16.510113*u.deg, elevation=2390*u.m)
 		# NB: Galactic doesn't work with hour angles
 		self.coordsys = 1 # 0 = Galactic, 1 = ICRS.
 
-	def ensure_dir(self,f):
-		os.makedirs(f, exist_ok=True)
+		self.k = 1.380e-23 # Boltzman constant m2 kg s-2 K-1
+		self.c = 2.9979e8
+
+		# Roughly
+		self.nu_tgi = 30e9
+		self.B_tgi = 8e9
+		self.nu_fgi = 40e9
+		self.B_fgi = 8e9
+
+	def calc_JytoK(self,beam,freq):
+		return 1e-26*((self.c/freq)**2)/(2.0*self.k*calc_beam_area(beam))
 
 	# Read in a single pixel masterfile, and return the dictionary of the results
-	def read_pixel_masterfile(self, filename):
+	def read_pixel_masterfile(self, filename,usefloat=False):
 		jd = 0
 		array = []
 		with open(filename) as f:
@@ -75,27 +72,21 @@ class tgi:
 				else:
 					val = line.strip().split()
 					# Convert to integers
-					val = [int(x) for x in val]
+					if usefloat:
+						val = [float(x) for x in val]
+					else:
+						val = [int(x) for x in val]
 					array.append(val)
 		return jd, array
 		
-	# Read in a single pixel masterfile, and return the dictionary of the results
-	def read_pixel_positions(self, filename):
-		array = []
-		with open(filename) as f:
-			for line in f:
-				if '*' not in line:
-					val = line.strip().split()
-					array.append([int(val[0]), float(val[1]), float(val[2])])
-		return array
-		
-	def read_pixel_masterfiles(self, prefix):
+	# Read in all of the pixel masterfiles
+	def read_pixel_masterfiles(self, prefix,usefloat=False):
 		jds = []
 		arrays = []
 		for i in range(1,500):
 			print(prefix+format(i, '03d')+'.txt')
 			try:
-				jd, array = self.read_pixel_masterfile(prefix+format(i, '03d')+'.txt')
+				jd, array = self.read_pixel_masterfile(prefix+format(i, '03d')+'.txt',usefloat=usefloat)
 			except:
 				break
 			jds.append(jd)
@@ -104,10 +95,17 @@ class tgi:
 		# exit()
 		return jds, arrays
 
+	# Read in a pixel positions file, and return the dictionary of the results
+	def read_pixel_positions(self, filename):
+		array = []
+		with open(filename) as f:
+			for line in f:
+				if '*' not in line:
+					val = line.strip().split()
+					array.append([int(val[0]), float(val[1]), float(val[2])])
+		return array
+
 	def get_pixel_info(self, jd, das):
-		# print(jd)
-		# print(das)
-		# print(self.pixeljds)
 		pixel_jd = [x for x in self.pixeljds if x <= jd][-1]
 		# print(pixel_jd)
 		pixel_id = self.pixeljds.index(pixel_jd)
@@ -122,71 +120,29 @@ class tgi:
 					tgi = 1
 					fgi = 0
 				pixelposition = self.pixelpositions[line[0]-1]
-				print(pixelposition)
-				return {'fp':line[0],'pixel':line[1],'fem':line[2],'bem':line[3],'das':line[5],'tgi':tgi,'fgi':fgi,'x_pos':pixelposition[1],'y_pos':pixelposition[2]}
+				# print(pixelposition)
+
+				# See if we can get polcal info
+				polcal = self.get_polcal_info(jd,das)
+
+				return {'fp':line[0],'pixel':line[1],'fem':line[2],'bem':line[3],'das':line[5],'tgi':tgi,'fgi':fgi,'x_pos':pixelposition[1],'y_pos':pixelposition[2],'polcal':polcal}
 				# return line
 		return []
 
+	def get_polcal_info(self, jd, das):
+		try:
+			pixel_jd = [x for x in self.polcaljds if x <= jd][-1]
+		except:
+			return []
+		pixel_id = self.polcaljds.index(pixel_jd)
+		returnvals = []
+		for line in self.polcalarrays[pixel_id]:
+			if line[0] == das:
+				returnvals.append([line[1],line[2],line[3]])
+		return returnvals
+
 	def read_tod(self, prefix, numfiles=50,quiet=True):
-		# Read in the data
-		jd = np.empty(0)
-		az = np.empty(0)
-		el = np.empty(0)
-		data = np.empty((0,0,0))
-		for i in range(0,numfiles):
-			print(self.indir+'/'+prefix+'-'+format(i, '04d')+'.tod2')
-			try:
-				inputfits = fits.open(self.indir+'/'+prefix+'-'+format(i, '04d')+'.tod2')
-			except:
-				break
-			# cols = inputfits[1].columns
-			# col_names = cols.names
-			ndata = len(inputfits[1].data.field(0)[0][:])
-			nsamples = ndata//4
-			if nsamples*4 != ndata:
-				print('Oddity in ' + prefix+'-'+format(i, '04d')+'.tod2' + ' - ndata = ' + str(ndata) + ' is not dividable by 4, changing it to ' + str(nsamples*4))
-			if i == 0:
-				jd = inputfits[1].data.field(0)[0][:nsamples*4]
-				az = inputfits[1].data.field(1)[0][:nsamples*4]
-				el = inputfits[1].data.field(2)[0][:nsamples*4]
-			else:
-				jd = np.append(jd, inputfits[1].data.field(0)[0][:nsamples*4])
-				az = np.append(az,inputfits[1].data.field(1)[0][:nsamples*4])
-				el = np.append(el,inputfits[1].data.field(2)[0][:nsamples*4])
-			rawdata = inputfits[1].data.field(3)[0][:nsamples*4*4*31]
-			if np.shape(rawdata)[0] == ndata:
-				rawdata = rawdata.reshape(ndata*124,order='C')
-				rawdata = rawdata[:nsamples*4*4*31]
-			data = np.append(data, rawdata)
-
-			if not quiet:
-				print(' Start time: ' + str(np.min(inputfits[1].data.field(0)[0][:nsamples*4])))
-				print(' End time: ' + str(np.max(inputfits[1].data.field(0)[0][:nsamples*4])))
-				print(' Duration: ' + str((np.max(inputfits[1].data.field(0)[0][:nsamples*4])-np.min(inputfits[1].data.field(0)[0][:nsamples*4]))*24*60*60) + ' seconds')
-				print(' There are ' + str(ndata) + " datapoints")
-				print(' Az range: ' + str(np.min(inputfits[1].data.field(1)[0][:nsamples*4])) + ' to ' + str(np.max(inputfits[1].data.field(1)[0][:nsamples*4])))
-				print(' El range: ' + str(np.min(inputfits[1].data.field(2)[0][:nsamples*4])) + ' to ' + str(np.max(inputfits[1].data.field(2)[0][:nsamples*4])))
-				print(' Raw data array is ' + str(np.shape(rawdata)))
-
-		# Reshape the data
-		ndata = len(jd)//4
-		az = az.reshape(4,ndata,order='F')
-		el = el.reshape(4,ndata,order='F')
-		jd = jd.reshape(4,ndata,order='F')
-		print(prefix)
-		print(' Start time: ' + str(np.min(jd)))
-		print(' End time: ' + str(np.max(jd)))
-		print(' Duration: ' + str((np.max(jd)-np.min(jd))*24*60*60) + ' seconds')
-		print(' There are ' + str(ndata) + " datapoints")
-		print(' Az range: ' + str(np.min(az)) + ' to ' + str(np.max(az)))
-		print(' El range: ' + str(np.min(el)) + ' to ' + str(np.max(el)))
-		print(' JD shape: ' + str(np.shape(jd)))
-		print(' Az shape: ' + str(np.shape(az)))
-		print(' Data shape: ' + str(np.shape(data)))
-		print(' New data length: ' + str(len(data)/(self.numpixels*4*4)))
-		data = data.reshape(4, self.numpixels, 4, ndata, order='F')
-		print(' New data shape: ' + str(np.shape(data)))
-		return az, el, jd, data
+		return read_tod_files(self.indir, prefix, self.numpixels, numfiles=numfiles,quiet=quiet)
 
 	# Note: this is currently slow and over-precise, see
 	# https://github.com/astropy/astropy/pull/6068
@@ -363,7 +319,7 @@ class tgi:
 
 		return data
 
-	def converttopol(self, data, ordering=[0,1,2,3],pa=[]):
+	def converttopol(self, data, ordering=[0,1,2,3],pa=[],polangle=0):
 		newdata = np.zeros(np.shape(data))
 		newdata[0] = (data[ordering[0],:] + data[ordering[1],:])# / 2.0
 		newdata[1] = (data[ordering[0],:] - data[ordering[1],:])# / 2.0
@@ -374,15 +330,22 @@ class tgi:
 			ang = 2.0*pa # Already in radians
 			Q = newdata[1,:]*np.cos(ang) + newdata[2,:]*np.sin(ang)
 			U = -newdata[1,:]*np.sin(ang) + newdata[2,:]*np.cos(ang) 
-			newdata[1] = Q
-			newdata[2] = U
+			newdata[1] = Q.copy()
+			newdata[2] = U.copy()
+
+		print(polangle)
+		if polangle != 0:
+			Q = newdata[1,:]*np.cos(2.0*polangle*np.pi/180.0) + newdata[2,:]*np.sin(2.0*polangle*np.pi/180.0)
+			U = -newdata[1,:]*np.sin(2.0*polangle*np.pi/180.0) + newdata[2,:]*np.cos(2.0*polangle*np.pi/180.0)
+			newdata[1] = Q.copy()
+			newdata[2] = U.copy()
 
 		return newdata
 
 
 	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50):
 		print(self.outdir+'/'+prefix)
-		self.ensure_dir(self.outdir+'/'+prefix)
+		ensure_dir(self.outdir+'/'+prefix)
 
 		if 'DIP' in prefix:
 			# We have a sky dip. Run the routine to analyse that rather than this routine.
@@ -450,8 +413,13 @@ class tgi:
 						# 	ordering = [1,3,0,2]
 						# elif det == 3:
 						# 	ordering = [3,0,2,1]
-
-					data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa)
+					# If we have polcal data, use it
+					print(pixinfo['polcal'])
+					print(pixinfo['polcal'][det])
+					if pixinfo['polcal'] != []:
+						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa,polangle=pixinfo['polcal'][det][1])
+					else:
+						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa)
 
 				for j in phaserange:
 					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
@@ -471,15 +439,23 @@ class tgi:
 						else:
 							skymap[i] = hp.pixelfunc.UNSEEN
 
-					# if pix == 3 or pix == 4 or pix == 5 or pix == 21 or pix == 22 or pix == 23 or pix == 24 or pix == 25:
-					# print(pix)
 					# Get the maximum value in the map
 					maxval = np.max(skymap)
 					# Get a sample of data from the start of the measurement
 					std = np.std(data[det][pix][j][0:4000])
 					print(maxval)
 					print(std)
-					print(std*(400/maxval)/np.sqrt(1000.0))
+					if pixinfo['tgi']:
+						conv = self.calc_JytoK(0.2,self.nu_tgi)
+						flux = 344.0
+					else:
+						conv = self.calc_JytoK(0.2,self.nu_fgi)
+						flux = 318.0
+
+					estimate = std*(flux/maxval)/np.sqrt(1000.0)
+					print('In Jy/sec:' + str(estimate))
+					print('In K/sec:' + str(estimate*conv))
+					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/1000)))
 
 					hp.write_map(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits',skymap,overwrite=True)
 					hp.mollview(skymap)
@@ -525,7 +501,7 @@ class tgi:
 
 	def stack_maps_tod(self, prefix,schedules,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,dopol=False,numfiles=50):
 		print(self.outdir+'/'+prefix)
-		self.ensure_dir(self.outdir+'/'+prefix)
+		ensure_dir(self.outdir+'/'+prefix)
 
 		skymap = np.zeros((len(pixelrange),self.npix), dtype=np.float)
 		hitmap = np.zeros((len(pixelrange),self.npix), dtype=np.float)
@@ -632,10 +608,80 @@ class tgi:
 
 		return
 
-	def analyse_skydip(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50,minel=35.0,maxel=85.0,numelbins=100):
-		print(self.outdir+'/'+prefix)
-		self.ensure_dir(self.outdir+'/'+prefix)
+	def examine_source(self,skymaps,hitmaps,outputname,sourcepos=(0,0),plotlimit=0.0):
 
+		skymap = np.zeros(self.npix, dtype=np.float)
+		hitmap = np.zeros(self.npix, dtype=np.float)
+
+		nummaps = len(skymaps)
+		for i in range(0,nummaps):
+			try:
+				inputmap = hp.read_map(skymaps[i])
+				inputhitmap = hp.read_map(hitmaps[i])
+			except:
+				continue
+
+			if sourcepos == (0,0):
+				# We have a map but no position, let's find the peak position
+				skymax = np.max(inputmap)
+				pixelpos = np.where(inputmap==skymax)[0][0]
+				print(pixelpos)
+				sourcepos = hp.pixelfunc.pix2ang(self.nside,pixelpos,lonlat=True)
+
+			print(sourcepos)
+			sourcecoord = SkyCoord(sourcepos[0]*u.deg, sourcepos[1]*u.deg, frame=Galactic)
+			x_val = []
+			y_val = []
+			for i in range(0,self.npix):
+				if inputmap[i] != hp.UNSEEN:
+					if inputmap[i] != 0.0:
+						pixelpos = hp.pixelfunc.pix2ang(self.nside,i,lonlat=True)
+						pixelcoord = SkyCoord(pixelpos[0]*u.deg, pixelpos[1]*u.deg, frame=Galactic)
+						sep=pixelcoord.separation(sourcecoord)
+						# print(sep.degree,inputmap[i])
+						if sep.degree < 2.0:
+							x_val.append(sep.degree)
+							y_val.append(inputmap[i])
+
+			x_val = np.array(x_val)
+			y_val = np.array(y_val)
+
+			plt.plot(x_val,y_val,'b.')
+
+			params = [10.0,1.0,0.0]
+			param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_gaussian, params, args=(x_val, y_val),full_output=True)
+			sigma_param_est = np.sqrt(np.diagonal(cov_x))
+			mesg_fit = (
+			r'$A={:5.3f}\pm{:3.2f}$'.format(
+				param_est[0], sigma_param_est[0]) + ','
+			r'$B={:5.3f}\pm{:3.2f}$'.format(
+				param_est[1], sigma_param_est[1]) + ','
+			r'$C={:5.3f}\pm{:3.2f}$'.format(
+				param_est[2], sigma_param_est[2]))
+			toplot = np.arange(0,2.0,0.01)
+			plt.plot(toplot,fit_gaussian(toplot,param_est),label=mesg_fit)
+			plt.xlabel('Distance')
+			plt.ylabel('Power')
+			plt.yscale('log')
+			plt.ylim((1e-4,skymax))
+
+			plt.legend(prop={'size':8})
+			plt.savefig('test.pdf')
+			plt.close()
+			plt.clf()
+
+		return
+
+	def analyse_skydip(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50,minel=35.0,maxel=85.0,numelbins=100,plotindividual=False):
+		print(self.outdir+'/'+prefix)
+		ensure_dir(self.outdir+'/'+prefix)
+
+		atm_tgi = 5.0
+		atm_fgi = 10.0
+
+		# Start a log file
+		logging.basicConfig(filename=self.outdir+'/'+prefix+'/log_skydip.log',level=logging.DEBUG)
+		logging.info('Assuming atmosphere of ' + str(atm_tgi) + 'K for TGI and ' + str(atm_fgi) + 'K for FGI')
 		# Read in the data
 		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
 
@@ -702,7 +748,7 @@ class tgi:
 						self.plot_val_tod(az[det],el[det],self.outdir+'/'+prefix+'/az_el_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
 
 					# Plot the individual skydips
-					elbins = np.zeros((4,num_skydips,numelbins))
+					elbins = np.zeros((5,num_skydips,numelbins))
 					for i in range(1,num_skydips):
 
 						elstep = (maxel-minel)/float(numelbins)
@@ -718,10 +764,31 @@ class tgi:
 							elmask[el[det] < elstepmax] = elmask[el[det] < elstepmax] + 0.5
 							elmask[elmask < 1] = 0
 							elbins[1][i][k] = np.mean(data[det][pix][j][stepmask*elmask==1])
-							elbins[2][i][k] = np.sum(data[det][pix][j][stepmask*elmask==1])
-							elbins[3][i][k] = np.std(data[det][pix][j][stepmask*elmask==1])
-						self.plot_skydip(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-						self.plot_skydip(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							# elbins[2][i][k] = np.sum(data[det][pix][j][stepmask*elmask==1])
+
+						# Before doing the std, subtract out a fit
+						params = [1,1]#,0]
+						param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_skydip, params, args=(elbins[0][i], elbins[1][i]),full_output=True)
+
+						for k in range(0,numelbins):
+							elstepmin = minel+k*elstep
+							elstepmax = minel+(k+1)*elstep
+							elmask = np.zeros(len(skydip_mask))
+							elmask[el[det] > elstepmin] = elmask[el[det] > elstepmin] + 0.5
+							elmask[el[det] < elstepmax] = elmask[el[det] < elstepmax] + 0.5
+							elmask[elmask < 1] = 0
+
+							tempdata = data[det][pix][j][stepmask*elmask==1] - fit_skydip(el[det][stepmask*elmask==1],param_est)
+							elbins[2][i][k] = np.mean(tempdata)
+							elbins[3][i][k] = np.std(tempdata)
+							elbins[4][i][k] = fit_skydip(elbins[0][i][k],param_est)
+
+
+						if plotindividual:
+							self.plot_skydip(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							# self.plot_skydip(elbins[0][i],elbins[2][i],self.outdir+'/'+prefix+'/average_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							self.plot_skydip(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							# self.plot_skydip(elbins[0][i],elbins[4][i],self.outdir+'/'+prefix+'/std_average_fit_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
 
 					# Combine the sky dips into one plot
 					for i in range(1,num_skydips):
@@ -747,7 +814,7 @@ class tgi:
 						tofit_y_std.append(elbins[3][i])
 					tofit_x_std = np.array(tofit_x_std)
 					tofit_y_std = np.array(tofit_y_std)
-					params = [1,1,0]
+					params = [1,1]#,0]
 					param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_skydip, params, args=(tofit_x_std.flatten(), tofit_y_std.flatten()),full_output=True)
 					sigma_param_est = np.sqrt(np.diagonal(cov_x))
 					skydip_fitted = fit_skydip(elbins[0][1],param_est)
@@ -755,10 +822,17 @@ class tgi:
 					r'$A={:5.3e}\pm{:3.2e}$'.format(
 						param_est[0], sigma_param_est[0]) + ','
 					r'$B={:5.3e}\pm{:3.2e}$'.format(
-						param_est[1], sigma_param_est[1]) + ','
-					r'     $C={:5.3e}\pm{:3.2e}$'.format(
-						param_est[2], sigma_param_est[2]))
+						param_est[1], sigma_param_est[1]))# + ','
+					# r'     $C={:5.3e}\pm{:3.2e}$'.format(
+						# param_est[2], sigma_param_est[2]))
 					plt.plot(elbins[0][1],skydip_fitted,'g',label="Fit: " + mesg_fit)
+
+					if pixinfo['tgi'] == 1:
+						systemp = (param_est[0]/param_est[1])*atm_tgi
+					else:
+						systemp = (param_est[0]/param_est[1])*atm_fgi
+
+					print('DAS '+str(pix) + ' Tsys estimate: ' + str(systemp))
 
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')
@@ -784,7 +858,7 @@ class tgi:
 							plt.plot(elbins[0][i],toplot,'r',alpha=0.5)
 					tofit_x = np.array(tofit_x)
 					tofit_y = np.array(tofit_y)
-					params = [1,1,0]
+					params = [1,1]#,0]
 					param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_skydip, params, args=(tofit_x.flatten(), tofit_y.flatten()),full_output=True)
 					sigma_param_est = np.sqrt(np.diagonal(cov_x))
 					skydip_fitted = fit_skydip(elbins[0][1],param_est)
@@ -792,9 +866,9 @@ class tgi:
 					r'$A={:5.3e}\pm{:3.2e}$'.format(
 						param_est[0], sigma_param_est[0]) + ','
 					r'$B={:5.3e}\pm{:3.2e}$'.format(
-						param_est[1], sigma_param_est[1]) + ','
-					r'     $C={:5.3e}\pm{:3.2e}$'.format(
-						param_est[2], sigma_param_est[2]))
+						param_est[1], sigma_param_est[1]))# + ','
+					# r'     $C={:5.3e}\pm{:3.2e}$'.format(
+						# param_est[2], sigma_param_est[2]))
 					plt.plot(elbins[0][1],skydip_fitted,'g',label="Fit: " + mesg_fit)
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')

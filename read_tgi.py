@@ -25,12 +25,42 @@ import tgi
 mpl.rcParams['agg.path.chunksize'] = 10000
 
 # run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
-run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
+run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt',polcalfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_polcal.')
+# print(run.get_pixel_info(2458530.0,4))
 
-# run.analyse_skydip('DIP000-190411-2143',detrange=[0],phaserange=[0])
-# run.analyse_skydip('DIP000-190411-2120',dopol=True)#,detrange=[0],phaserange=[0])
+# Test on Crab
+# run.analyse_tod('CRAB-190311-1728',dopol=False)
 # exit()
 
+# Testing source features
+# run.examine_source(['/Users/mpeel/Documents/git/quijote/MOON-190411-1525/skymap_24_1_1.fits'],['/Users/mpeel/Documents/git/quijote/MOON-190411-1525/hitmap_4_1_1.fits'],'test')
+
+# Some test skydips
+# run.analyse_skydip('DIP000-190411-2120',dopol=True,detrange=[0],numelbins=50)
+# run.analyse_skydip('DIP000-190411-2143',dopol=True)
+
+# exit()
+
+run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
+
+name = 'MOON-190411-1525'
+centralpos=(97.5,21.8)
+for i in range(1,5):
+	if i == 2 or i == 3:
+		plotlimit = 0.0001
+	else:
+		plotlimit = 0.0
+	for k in range(1,5):
+		filelist = []
+		hitlist = []
+		for pix in range(1,31):
+			filelist.append('/Users/mpeel/Documents/git/quijote/'+name+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+			hitlist.append('/Users/mpeel/Documents/git/quijote/'+name+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+		print(filelist)
+		run.combine_sky_maps(filelist,hitlist,'/Users/mpeel/Documents/git/quijote/'+name+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit)
+
+
+exit()
 
 # pixels = [[1]]
 # channels = [[17]]
