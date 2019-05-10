@@ -138,7 +138,7 @@ class tgi:
 		returnvals = []
 		for line in self.polcalarrays[pixel_id]:
 			if line[0] == das:
-				returnvals.append([line[1],line[2],line[3]])
+				returnvals.append([line[1],line[2],line[3]])#,line[4],line[5],line[6],line[7]])
 		return returnvals
 
 	def read_tod(self, prefix, numfiles=50,quiet=True):
@@ -319,8 +319,15 @@ class tgi:
 
 		return data
 
-	def converttopol(self, data, ordering=[0,1,2,3],pa=[],polangle=0):
+	def converttopol(self, data, ordering=[0,1,2,3],pa=[],polangle=0,polcorr=[1.0,1.0,1.0,1.0]):
 		newdata = np.zeros(np.shape(data))
+
+		# This didn't work, so isn't currently used.
+		# data[ordering[0]] = data[ordering[0]] * polcorr[0]
+		# data[ordering[1]] = data[ordering[1]] * polcorr[1]
+		# data[ordering[2]] = data[ordering[2]] * polcorr[2]
+		# data[ordering[3]] = data[ordering[3]] * polcorr[3]
+
 		newdata[0] = (data[ordering[0],:] + data[ordering[1],:])# / 2.0
 		newdata[1] = (data[ordering[0],:] - data[ordering[1],:])# / 2.0
 		newdata[2] = (data[ordering[2],:] - data[ordering[3],:])# / 2.0
@@ -333,7 +340,7 @@ class tgi:
 			newdata[1] = Q.copy()
 			newdata[2] = U.copy()
 
-		print(polangle)
+		# print(polangle)
 		if polangle != 0:
 			Q = newdata[1,:]*np.cos(2.0*polangle*np.pi/180.0) + newdata[2,:]*np.sin(2.0*polangle*np.pi/180.0)
 			U = -newdata[1,:]*np.sin(2.0*polangle*np.pi/180.0) + newdata[2,:]*np.cos(2.0*polangle*np.pi/180.0)
@@ -343,7 +350,7 @@ class tgi:
 		return newdata
 
 
-	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50):
+	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,plotmap=True,dopol=False,plotcombination=False,numfiles=50):
 		print(self.outdir+'/'+prefix)
 		ensure_dir(self.outdir+'/'+prefix)
 
@@ -417,7 +424,8 @@ class tgi:
 					print(pixinfo['polcal'])
 					print(pixinfo['polcal'][det])
 					if pixinfo['polcal'] != []:
-						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa,polangle=pixinfo['polcal'][det][1])
+						# polcorr = [pixinfo['polcal'][det][3],pixinfo['polcal'][det][4],pixinfo['polcal'][det][5],pixinfo['polcal'][det][6]]
+						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa,polangle=pixinfo['polcal'][det][1])#,polcorr=polcorr)
 					else:
 						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa)
 
@@ -458,18 +466,21 @@ class tgi:
 					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/1000)))
 
 					hp.write_map(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits',skymap,overwrite=True)
-					hp.mollview(skymap)
-					plt.savefig(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-					plt.close()
-					plt.clf()
 					hp.write_map(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits',hitmap,overwrite=True)
-					hp.mollview(hitmap)
-					plt.savefig(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-					hp.gnomview(skymap,rot=centralpos,reso=5)
-					plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-					plt.close()
-					plt.clf()
-					if plotlimit != 0.0:
+
+					if plotmap:
+						hp.mollview(skymap)
+						plt.savefig(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.close()
+						plt.clf()
+					if plotmap:
+						hp.mollview(hitmap)
+						plt.savefig(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						hp.gnomview(skymap,rot=centralpos,reso=5)
+						plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.close()
+						plt.clf()
+					if plotmap and plotlimit != 0.0:
 						hp.mollview(skymap,min=-plotlimit,max=plotlimit)
 						plt.savefig(self.outdir+'/'+prefix+'/skymap_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
@@ -478,6 +489,26 @@ class tgi:
 						plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
+
+
+		# Do some combined plots if requested
+		if plotcombination:
+			for i in range(1,5):
+				if i == 2 or i == 3:
+					plotlimit2 = plotlimit
+				else:
+					plotlimit2 = 0.0
+				for k in range(1,5):
+					filelist = []
+					hitlist = []
+					for pix in range(1,self.numpixels):
+						filelist.append(self.outdir+'/'+prefix+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+						hitlist.append(self.outdir+'/'+prefix+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+					print(filelist)
+					run.combine_sky_maps(filelist,hitlist,self.outdir+'/'+prefix+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit2)
+
+			for i in range(1,5):
+				run.calc_P_angle_skymaps(self.outdir+'/'+prefix+'/combined_1_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_2_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_3_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_pol_'+str(i),centralpos=centralpos)
 
 
 		# # Plot a boxcar average
@@ -607,6 +638,54 @@ class tgi:
 		plt.clf()
 
 		return
+
+	def calc_P_angle_skymaps(self,I_filename,Q_filename,U_filename,outputname,centralpos=(0,0),plotlimit=0.0):
+		print(I_filename)
+		I = hp.read_map(I_filename)
+		Q = hp.read_map(Q_filename)
+		U = hp.read_map(U_filename)
+		P = np.sqrt(Q**2+U**2)
+		ang = (0.5*np.arctan2(U,Q)* 180 / np.pi)
+		frac = P/I
+
+		P[I == hp.pixelfunc.UNSEEN] = hp.pixelfunc.UNSEEN
+		ang[I == hp.pixelfunc.UNSEEN] = hp.pixelfunc.UNSEEN
+		ang[P < 0.1*np.max(P)] = hp.pixelfunc.UNSEEN
+		frac[I == hp.pixelfunc.UNSEEN] = hp.pixelfunc.UNSEEN
+		frac[P < 0.1*np.max(P)] = hp.pixelfunc.UNSEEN
+
+		hp.write_map(outputname+'_P.fits',P,overwrite=True)
+		hp.mollview(P)
+		plt.savefig(outputname+'_P.png')
+		plt.close()
+		plt.clf()
+		hp.write_map(outputname+'_ang.fits',ang,overwrite=True)
+		hp.mollview(ang)
+		plt.savefig(outputname+'_ang.png')
+		plt.close()
+		plt.clf()
+		hp.write_map(outputname+'_Pfrac.fits',frac,overwrite=True)
+		hp.mollview(frac,min=0,max=10)
+		plt.savefig(outputname+'_Pfrac.png')
+		plt.close()
+		plt.clf()
+		if plotlimit != 0.0:
+			hp.gnomview(P,rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
+		else:
+			hp.gnomview(P,rot=centralpos,reso=5)
+		plt.savefig(outputname+'_P_zoom.png')
+		plt.close()
+		plt.clf()
+		hp.gnomview(ang,rot=centralpos,reso=5,cmap=plt.get_cmap('hsv'))
+		plt.savefig(outputname+'_ang_zoom.png')
+		plt.close()
+		plt.clf()
+		hp.gnomview(frac,rot=centralpos,reso=5,min=0)#,max=0.1)
+		plt.savefig(outputname+'_Pfrac_zoom.png')
+		plt.close()
+		plt.clf()
+
+		return		
 
 	def examine_source(self,skymaps,hitmaps,outputname,sourcepos=(0,0),plotlimit=0.0):
 
@@ -972,7 +1051,7 @@ class tgi:
 		return np.array(data)
 
 	# Originally by Roger, 'plot_cal_data_sci_FGI_multi2018.py'
-	def plot_sci(self, data,channels=range(0,30),pixels=range(0,30),fix_neg=False):
+	def plot_sci(self, data,channels=range(0,30),pixels=range(0,30),fix_neg=False,offset=True):
 		dt2=data
 		ds=int(data.size/(8*124))
 		# fls=int(ds/30000)
@@ -986,10 +1065,28 @@ class tgi:
 			dt3=np.reshape(dt2,(124,ds,8))
 			if pixel >= 40:
 				# FGI
-				dt4=dt3[:,:,0:4]-dt3[:,:,4:]
+				if offset:
+					adj=1/dt3[chan:chan+4,0,0:4]
+					dt4=dt3[:,:,4:]/dt3[:,:,0:4]
+					dt3null=dt3[:,:,0:4]/dt3[:,:,0:4]
+					dt3[:,:,0:4]=dt3null[:,:,:]
+					dt3[:,:,4:]=dt4[:,:,:]
+					# dt4=dt4[:,:,:]-dt3null[:,:,:]
+					dt4=dt3[:,:,0:4]-dt3[:,:,4:]
+				else:
+					dt4=dt3[:,:,0:4]-dt3[:,:,4:]
 			else:
 				# TGI
-				dt4=dt3[:,:,4:]-dt3[:,:,0:4]
+				if offset:
+					adj=1/dt3[chan:chan+4,0,4:]
+					dt4=dt3[:,:,0:4]/dt3[:,:,4:]
+					dt3null=dt3[:,:,4:]/dt3[:,:,4:]
+					dt3[:,:,4:]=dt3null[:,:,:]
+					dt3[:,:,0:4]=dt4[:,:,:]
+					# dt4=dt4[:,:,:]-dt3null[:,:,:]
+					dt4=dt3[:,:,4:]-dt3[:,:,0:4]
+				else:
+					dt4=dt3[:,:,4:]-dt3[:,:,0:4]
 			# Calculate the mean values over a given phase state for all phase states in the file
 			phsum0=dt4[chan:chan+4,:,0]
 			if pixel >= 40:
@@ -1104,24 +1201,29 @@ class tgi:
 			L2_ang_mean[L2_ang_mean < -90.0] = L2_ang_mean[L2_ang_mean < -90.0] + 180.0
 
 			for k in range(4):
+				# print(num_sections)
 				if num_sections == 6:
 					p_ang=["-45º","-22.5º","0º","22.5º","45º"]
 					p_ang_num = [-45,-22.5,0,22.5,45]
 					v_out=[k+1,k+1,k+1,k+1,k+1]
+					maxnum = 5
 				else:
 					p_ang=["-45º","-22.5º","0º","22.5º","45º","67.5º"]
 					p_ang_num = [-45,-22.5,0,22.5,45,67.5]
 					v_out=[k+1,k+1,k+1,k+1,k+1,k+1]
+					maxnum = 6
 				# P_stats=list(zip(v_out,p_ang,L_mean[k,:],L_mean_rms[k,:],L_ang_mean[k,:],L_ang_rms[k,:]))
 				# P_stats_table=pd.DataFrame(data=P_stats,columns=["Vout","Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms"])
 				# print(P_stats_table)  
-				p_ang_corr = L2_ang_mean[k,:]+p_ang_num
+				p_ang_corr = L2_ang_mean[k,0:maxnum]+p_ang_num
 				p_ang_corr[p_ang_corr > 90.0] = p_ang_corr[p_ang_corr > 90.0] - 180.0
 				p_ang_corr[p_ang_corr < -90.0] = p_ang_corr[p_ang_corr < -90.0] + 180.0
 
 				P2_stats=list(zip(v_out,p_ang,L2_mean[k,:],L2_mean_rms[k,:],L2_ang_mean[k,:],L2_ang_rms[k,:],p_ang_corr,np.abs(L2_mean[k,:]*100/I2_mean[k,:])))
 				P2_stats_table=pd.DataFrame(data=P2_stats,columns=["Vout","Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms","P angle (deg), corrected","%pol"])
 				print(P2_stats_table)
+				if offset:
+				    print(adj[k,:])
 				print("Average P ang (corrected): " + '{:3.1f}'.format(np.mean(p_ang_corr)))
 				print("Average %pol: " + '{:3.1f}'.format(np.mean(np.abs(L2_mean[k,:]*100/I2_mean[k,:]))))
 			# Plot data on screen and into a pdf file

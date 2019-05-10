@@ -24,9 +24,32 @@ import tgi
 # This is needed if you want to write out lots of plots
 mpl.rcParams['agg.path.chunksize'] = 10000
 
+# First you need to start the class. This says where various bits of information can be found,
+# and where the output directory is.
+
 # run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
 run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt',polcalfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_polcal.')
-# print(run.get_pixel_info(2458530.0,4))
+
+run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
+# name = 'MOON-190411-1525'
+# centralpos=(97.5,21.8)
+# for i in range(1,5):
+# 	if i == 2 or i == 3:
+# 		plotlimit = 0.0001
+# 	else:
+# 		plotlimit = 0.0
+# 	for k in range(1,5):
+# 		filelist = []
+# 		hitlist = []
+# 		for pix in range(1,31):
+# 			filelist.append('/Users/mpeel/Documents/git/quijote/'+name+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+# 			hitlist.append('/Users/mpeel/Documents/git/quijote/'+name+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+# 		print(filelist)
+# 		run.combine_sky_maps(filelist,hitlist,'/Users/mpeel/Documents/git/quijote/'+name+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit)
+
+# for i in range(1,5):
+# 	run.calc_P_angle_skymaps('/Users/mpeel/Documents/git/quijote/'+name+'/combined_1_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/'+name+'/combined_2_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/'+name+'/combined_3_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/'+name+'/combined_pol_'+str(i),centralpos=centralpos)
+exit()
 
 # Test on Crab
 # run.analyse_tod('CRAB-190311-1728',dopol=False)
@@ -41,24 +64,26 @@ run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/User
 
 # exit()
 
-run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
+# run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
 
-name = 'MOON-190411-1525'
-centralpos=(97.5,21.8)
+# name = 'MOON-190411-1525'
+# centralpos=(97.5,21.8)
+# for i in range(1,5):
+# 	if i == 2 or i == 3:
+# 		plotlimit = 0.0001
+# 	else:
+# 		plotlimit = 0.0
+# 	for k in range(1,5):
+# 		filelist = []
+# 		hitlist = []
+# 		for pix in range(1,31):
+# 			filelist.append('/Users/mpeel/Documents/git/quijote/'+name+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+# 			hitlist.append('/Users/mpeel/Documents/git/quijote/'+name+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+# 		print(filelist)
+# 		run.combine_sky_maps(filelist,hitlist,'/Users/mpeel/Documents/git/quijote/'+name+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit)
+
 for i in range(1,5):
-	if i == 2 or i == 3:
-		plotlimit = 0.0001
-	else:
-		plotlimit = 0.0
-	for k in range(1,5):
-		filelist = []
-		hitlist = []
-		for pix in range(1,31):
-			filelist.append('/Users/mpeel/Documents/git/quijote/'+name+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-			hitlist.append('/Users/mpeel/Documents/git/quijote/'+name+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-		print(filelist)
-		run.combine_sky_maps(filelist,hitlist,'/Users/mpeel/Documents/git/quijote/'+name+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit)
-
+	run.calc_P_angle_skymaps('/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_1_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_2_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_3_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_pol_'+str(i),centralpos=(97.5,21.8))
 
 exit()
 
@@ -73,11 +98,11 @@ exit()
 pixels = [[5],[17],[23],[26],[41],[42],[63]]
 fix_neg = [False,False,False,False,True,True,False]
 channels = [[25],[23],[24],[22],[4],[6],[5]]
-files = [['testdata/'+'pix5_cal-19-04-09-13-14-17-0000.sci2','testdata/'+'pix5_cal-19-04-09-13-14-17-0001.sci2'],['testdata/'+'pix17_cal-19-04-09-12-56-16-0000.sci2','testdata/'+'pix17_cal-19-04-09-12-56-16-0001.sci2'],['testdata/'+'pix23_cal-19-04-09-13-33-21-0000.sci2','testdata/'+'pix23_cal-19-04-09-13-33-21-0001.sci2'],['testdata/'+'pix26_cal-19-04-09-11-49-35-0000.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0001.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0002.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0003.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0004.sci2','testdata/'+'pix26_cal-19-04-09-11-49-35-0005.sci2'],['testdata/'+'Pix41_cal-19-04-10-11-31-14-0000.sci2','testdata/'+'Pix41_cal-19-04-10-11-31-14-0001.sci2'],['testdata/'+'Pix42_cal-19-04-10-12-07-14-0000.sci2','testdata/'+'Pix42_cal-19-04-10-12-07-14-0001.sci2'],['testdata/'+'Pix63_cal-19-04-10-11-48-14-0000.sci2','testdata/'+'Pix63_cal-19-04-10-11-48-14-0001.sci2']]
+files = [['testdata/'+'pix5_cal-19-04-09-13-14-17-0000.sci2','testdata/'+'pix5_cal-19-04-09-13-14-17-0001.sci2'],['testdata/'+'pix17_cal-19-04-09-12-56-16-0000.sci2','testdata/'+'pix17_cal-19-04-09-12-56-16-0001.sci2'],['testdata/'+'pix23_cal-19-04-09-13-33-21-0000.sci2','testdata/'+'pix23_cal-19-04-09-13-33-21-0001.sci2'],['testdata/'+'pix26_cal-19-04-09-12-20-15-0000.sci2','testdata/'+'pix26_cal-19-04-09-12-20-15-0001.sci2'],['testdata/'+'Pix41_cal-19-04-10-11-31-14-0000.sci2','testdata/'+'Pix41_cal-19-04-10-11-31-14-0001.sci2'],['testdata/'+'Pix42_cal-19-04-10-12-07-14-0000.sci2','testdata/'+'Pix42_cal-19-04-10-12-07-14-0001.sci2'],['testdata/'+'Pix63_cal-19-04-10-11-48-14-0000.sci2','testdata/'+'Pix63_cal-19-04-10-11-48-14-0001.sci2']]
 for i in range(0,len(pixels)):
 	print('Pixel '+str(pixels[i]))
 	data = run.get_sci(files[i],quiet=True)
-	run.plot_sci(data,channels=channels[i],pixels=pixels[i],fix_neg=fix_neg[i])
+	run.plot_sci(data,channels=channels[i],pixels=pixels[i],fix_neg=fix_neg[i],offset=True)
 exit()
 
 # Run through the engineering data
