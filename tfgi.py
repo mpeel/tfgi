@@ -21,8 +21,9 @@ from astropy.coordinates import Angle
 from scipy.optimize import curve_fit
 import os
 import astroplan
-from tgi_functions import *
-from tgi_functions_read import *
+from tfgi_functions import *
+from tfgi_functions_plot import *
+from tfgi_functions_read import *
 import logging
 from astroutils import *
 
@@ -32,20 +33,19 @@ def calc_beam_area(beam):
 def calc_Tsys(std,B,t):
 	return std*np.sqrt(B*t)
 
-class tgi:
-	def __init__(self,indir="/net/nas/proyectos/quijote2",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt",polcalfileloc="/net/nas/proyectos/quijote2/etc/qt2_polcal."):
+class tfgi:
+	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt",polcalfileloc="/net/nas/proyectos/quijote2/etc/qt2_polcal."):
 		self.numpixels = 31
-		self.indir = indir
+		self.datadir = datadir
 		self.outdir = outdir
 		self.telescope = EarthLocation(lat=28.300224*u.deg, lon=-16.510113*u.deg, height=2390*u.m)
 		self.jd_ref = 2456244.5 # Taken as the first day of the Commissioning (13/Nov/2012, 0.00h)
 		self.nside = 512
 		self.npix = hp.nside2npix(self.nside)
-		self.pixeljds, self.pixelarrays = self.read_pixel_masterfiles(pixelfileloc)
-		self.polcaljds, self.polcalarrays = self.read_pixel_masterfiles(polcalfileloc,usefloat=True)
-		# print(self.polcaljds, self.polcalarrays)
-		# exit()
-		self.pixelpositions = self.read_pixel_positions(pixelposfileloc)
+		self.pixeljds, self.pixelarrays = read_pixel_masterfiles(pixelfileloc)
+		self.polcaljds, self.polcalarrays = read_pixel_masterfiles(polcalfileloc,usefloat=True)
+
+		self.pixelpositions = read_pixel_positions(pixelposfileloc)
 		self.apobserver = astroplan.Observer(latitude=28.300224*u.deg, longitude=-16.510113*u.deg, elevation=2390*u.m)
 		# NB: Galactic doesn't work with hour angles
 		self.coordsys = 1 # 0 = Galactic, 1 = ICRS.
@@ -59,52 +59,20 @@ class tgi:
 		self.nu_fgi = 40e9
 		self.B_fgi = 8e9
 
+		# Stable version control
+		self.ver = 0.1
+
+	def find_observations(self,searchtext):
+		results = []
+		for file in os.listdir(self.datadir):
+		    if searchtext in file:
+		    	obsname = "-".join(file.split("-")[:-1])
+		    	if obsname not in results:
+		    		results.append(obsname)
+		return results
+
 	def calc_JytoK(self,beam,freq):
 		return 1e-26*((self.c/freq)**2)/(2.0*self.k*calc_beam_area(beam))
-
-	# Read in a single pixel masterfile, and return the dictionary of the results
-	def read_pixel_masterfile(self, filename,usefloat=False):
-		jd = 0
-		array = []
-		with open(filename) as f:
-			for line in f:
-				if jd == 0:
-					jd = float(line.strip())
-				else:
-					val = line.strip().split()
-					# Convert to integers
-					if usefloat:
-						val = [float(x) for x in val]
-					else:
-						val = [int(x) for x in val]
-					array.append(val)
-		return jd, array
-		
-	# Read in all of the pixel masterfiles
-	def read_pixel_masterfiles(self, prefix,usefloat=False):
-		jds = []
-		arrays = []
-		for i in range(1,500):
-			print(prefix+format(i, '03d')+'.txt')
-			try:
-				jd, array = self.read_pixel_masterfile(prefix+format(i, '03d')+'.txt',usefloat=usefloat)
-			except:
-				break
-			jds.append(jd)
-			arrays.append(array)
-		# print(jds)
-		# exit()
-		return jds, arrays
-
-	# Read in a pixel positions file, and return the dictionary of the results
-	def read_pixel_positions(self, filename):
-		array = []
-		with open(filename) as f:
-			for line in f:
-				if '*' not in line:
-					val = line.strip().split()
-					array.append([int(val[0]), float(val[1]), float(val[2])])
-		return array
 
 	def get_pixel_info(self, jd, das):
 		pixel_jd = [x for x in self.pixeljds if x <= jd][-1]
@@ -143,7 +111,8 @@ class tgi:
 		return returnvals
 
 	def read_tod(self, prefix, numfiles=50,quiet=True):
-		return read_tod_files(self.indir, prefix, self.numpixels, numfiles=numfiles,quiet=quiet)
+		# Moved into tgi_functions_read.py
+		return read_tod_files(self.datadir, prefix, self.numpixels, numfiles=numfiles,quiet=quiet)
 
 	# Note: this is currently slow and over-precise, see
 	# https://github.com/astropy/astropy/pull/6068
@@ -169,23 +138,6 @@ class tgi:
 			healpix_pixel = hp.ang2pix(self.nside, (np.pi/2)-Angle(skypos.dec).radian, Angle(skypos.ra).radian)
 			pos = (np.median(Angle(skypos.ra).degree),np.median((Angle(skypos.dec).degree)))
 		return healpix_pixel, pos
-
-	def plot_tod(self, data, outputname,formatstr='b.'):
-		plt.plot(data,formatstr)
-		plt.xlabel('Samples')
-		plt.ylabel('Power')
-		plt.savefig(outputname)
-		plt.close()
-		plt.clf()
-		return
-
-	# Plot the TODs against a given set of vals, e.g. az or el.
-	def plot_val_tod(self, val, data, outputname):
-		plt.plot(val,data,'b.')
-		plt.savefig(outputname)
-		plt.close()
-		plt.clf()
-		return
 
 	# Plot a skydip with a fit
 	def plot_skydip(self,el,data,outputname):
@@ -368,9 +320,9 @@ class tgi:
 		skypos,pa = self.calc_positions(az, el, jd)
 		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
 
-		self.plot_tod(skypos.ra,self.outdir+'/'+prefix+'/plot_ra.png')
-		self.plot_tod(skypos.dec,self.outdir+'/'+prefix+'/plot_dec.png')
-		self.plot_tod(pa,self.outdir+'/'+prefix+'/plot_pa.png')
+		plot_tfgi_tod(skypos.ra,self.outdir+'/'+prefix+'/plot_ra.png')
+		plot_tfgi_tod(skypos.dec,self.outdir+'/'+prefix+'/plot_dec.png')
+		plot_tfgi_tod(pa,self.outdir+'/'+prefix+'/plot_pa.png')
 		# exit()
 		aperflux_outputfile = open(self.outdir+'/'+prefix+'/aperflux.txt', "w")
 
@@ -392,16 +344,16 @@ class tgi:
 					print(j)
 					if plottods:
 						# Plot some tods
-						self.plot_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
-						self.plot_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
 					# Do an FFT. Warning, this can slow things down quite a bit.
 					if dofft:
 						param_est, sigma_param_est = self.plot_fft(data[det][pix][j][0:10000],self.outdir+'/'+prefix+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_fit.png',samplerate=1000)
 						print(str(param_est[0]) + " " + str(sigma_param_est[0]) + " " + str(param_est[1]) + " " + str(sigma_param_est[1]) + " " + str(param_est[2]) + " " + str(sigma_param_est[2]))
 					data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
 					if plottods:
-						self.plot_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						self.plot_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
 
 				# Do we want to change from phase to I1,Q,U,I2?
 				if dopol:
@@ -436,8 +388,8 @@ class tgi:
 					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
 
 					if plottods:
-						self.plot_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
-						self.plot_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
 
 					skymap = np.zeros(self.npix, dtype=np.float)
 					hitmap = np.zeros(self.npix, dtype=np.float)
@@ -528,10 +480,10 @@ class tgi:
 						filelist.append(self.outdir+'/'+prefix+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
 						hitlist.append(self.outdir+'/'+prefix+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
 					print(filelist)
-					run.combine_sky_maps(filelist,hitlist,self.outdir+'/'+prefix+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit2)
+					self.combine_sky_maps(filelist,hitlist,self.outdir+'/'+prefix+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit2)
 
 			for i in range(1,5):
-				run.calc_P_angle_skymaps(self.outdir+'/'+prefix+'/combined_1_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_2_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_3_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_pol_'+str(i),centralpos=centralpos)
+				self.calc_P_angle_skymaps(self.outdir+'/'+prefix+'/combined_1_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_2_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_3_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_pol_'+str(i),centralpos=centralpos)
 
 
 		# # Plot a boxcar average
@@ -791,7 +743,7 @@ class tgi:
 		tempmask = el[0].copy()
 		tempmask[tempmask < minel] = 0.
 		tempmask[tempmask > maxel] = 0.
-		self.plot_tod(tempmask,self.outdir+'/'+prefix+'/mask.pdf')
+		plot_tfgi_tod(tempmask,self.outdir+'/'+prefix+'/mask.pdf')
 		skydip_mask = tempmask.copy()
 		# Find out whether we're going up or down in elevation
 		for i in range(1,len(skydip_mask)):
@@ -817,7 +769,7 @@ class tgi:
 					num_skydips = num_skydips+1
 					notzero = 0
 		# print(num_skydips)
-		self.plot_tod(skydip_mask,self.outdir+'/'+prefix+'/mask_bit.pdf',formatstr='b')
+		plot_tfgi_tod(skydip_mask,self.outdir+'/'+prefix+'/mask_bit.pdf',formatstr='b')
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
@@ -844,10 +796,10 @@ class tgi:
 
 					if plottods:
 						# Do a plot of az vs. tod
-						self.plot_tod(data[det][pix][j],self.outdir+'/'+prefix+'/tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
-						self.plot_val_tod(az[det],data[det][pix][j],self.outdir+'/'+prefix+'/az_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
-						self.plot_val_tod(el[det],data[det][pix][j],self.outdir+'/'+prefix+'/el_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
-						self.plot_val_tod(az[det],el[det],self.outdir+'/'+prefix+'/az_el_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_tod(data[det][pix][j],self.outdir+'/'+prefix+'/tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_val_tod(az[det],data[det][pix][j],self.outdir+'/'+prefix+'/az_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_val_tod(el[det],data[det][pix][j],self.outdir+'/'+prefix+'/el_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_val_tod(az[det],el[det],self.outdir+'/'+prefix+'/az_el_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
 
 					# Plot the individual skydips
 					elbins = np.zeros((5,num_skydips,numelbins))

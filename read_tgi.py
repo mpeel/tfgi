@@ -1,72 +1,56 @@
 #!/usr/bin/env python
 # -*- coding: utf-8  -*-
 #
-# Read in raw TGI data
+# Run the TFGI python pipeline
 # 
 # Version history:
 #
 # 02-Apr-2019  M. Peel       Started
-import numpy as np
+# 17-May-2019  M. Peel 		 Tidied up
+
 import healpy as hp
-import matplotlib.pyplot as plt
-import astropy.io.fits as fits
-import pandas as pd
-import scipy.fftpack
+import numpy as np
 import matplotlib as mpl
-from scipy import signal, optimize
-import astropy.units as u
-from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Galactic, ICRS, FK5
-from astropy.time import Time
-from astropy.coordinates import Angle
-from scipy.optimize import curve_fit
-import tgi
+import matplotlib.pyplot as plt
+import tfgi
 
 # This is needed if you want to write out lots of plots
 mpl.rcParams['agg.path.chunksize'] = 10000
 
-# First you need to start the class. This says where various bits of information can be found,
-# and where the output directory is.
+# Set this to where you have a copy of the data
+# basedir = '/Volumes/proyectos/quijote2/'
+basedir = '/Users/mpeel/Documents/git/quijote/'
+# Set this to where you want to output stuff. The directory should already exist.
+# NB: subdirectories will automatically be created for each dataset.
+outdir = '/Users/mpeel/Documents/git/quijote/'
+# Start the class
+run = tfgi.tfgi(outdir=outdir,\
+	datadir=basedir+'tod/',\
+	pixelfileloc=basedir+'etc/qt2_masterfiles_new/qt2_pixel_masterfile.',\
+	pixelposfileloc=basedir+'etc/tgi_fgi_horn_positions_table.txt',\
+	polcalfileloc=basedir+'etc/qt2_masterfiles_new/qt2_polcal.')
 
-# run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
-run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt',polcalfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_polcal.')
-
-datasets = ['CRAB-190409-2029','190410-1529','CRAB-190410-2025','CRAB-190411-2021','MOON-190411-1525']
+# Search for CRAB and MOON observations in April 2019, and analyse them.
+datasets1 = run.find_observations('CRAB-1904')
+datasets2 = run.find_observations('MOON-1904')
+datasets = list(set(datasets1) | set(datasets2))
+print(datasets)
 for dataset in datasets:
+	# You can set options for the reduction in the next line. The options and their defaults are:
+	# pixelrange=range(0,31)  - set to an array, defaults to all pixels and the masterfile
+	# detrange=range(0,4)     - set to an array, defaults to all detectors
+	# phaserange=range(0,4)   - set to an array, defaults to all phase outputs
+	# plotlimit=0.0           - lets you define a maximum value in some output plots
+	# quiet=False             - set to true if you want the code to run quietly
+	# dofft=False             - set to false to generate ffts and fit for f_knee
+	# plottods=True           - set to false to not plot tods
+	# plotmap=True            - set to false to not plot maps
+	# dopol=False             - set to true to change from detector to polarised outputs
+	# plotcombination=True    - set to false to disable creating a combined map
+	# numfiles=50             - set to a lower number to only read in the first files of each observation
 	run.analyse_tod(dataset,plotlimit=0.001,dopol=True,plottods=False)
 
 exit()
-
-#run.analyse_tod('CRAB-190411-2021',plotlimit=0.002,dopol=True,plottods=False)
-# run.analyse_tod('CRAB-190410-2025',plotlimit=0.002,dopol=True,plottods=False)
-# run.analyse_tod('CRAB-190410-1529',plotlimit=0.002,dopol=True,plottods=False)
-
-
-
-#run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
-
-# name = 'MOON-190411-1525'
-# centralpos=(97.5,21.8)
-# for i in range(1,5):
-# 	if i == 2 or i == 3:
-# 		plotlimit = 0.0001
-# 	else:
-# 		plotlimit = 0.0
-# 	for k in range(1,5):
-# 		filelist = []
-# 		hitlist = []
-# 		for pix in range(1,31):
-# 			filelist.append('/Users/mpeel/Documents/git/quijote/'+name+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-# 			hitlist.append('/Users/mpeel/Documents/git/quijote/'+name+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-# 		print(filelist)
-# 		run.combine_sky_maps(filelist,hitlist,'/Users/mpeel/Documents/git/quijote/'+name+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit)
-
-# for i in range(1,5):
-# 	run.calc_P_angle_skymaps('/Users/mpeel/Documents/git/quijote/'+name+'/combined_1_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/'+name+'/combined_2_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/'+name+'/combined_3_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/'+name+'/combined_pol_'+str(i),centralpos=centralpos)
-exit()
-
-# Test on Crab
-# run.analyse_tod('CRAB-190311-1728',dopol=False)
-# exit()
 
 # Testing source features
 # run.examine_source(['/Users/mpeel/Documents/git/quijote/MOON-190411-1525/skymap_24_1_1.fits'],['/Users/mpeel/Documents/git/quijote/MOON-190411-1525/hitmap_4_1_1.fits'],'test')
@@ -76,29 +60,6 @@ exit()
 # run.analyse_skydip('DIP000-190411-2143',dopol=True)
 
 # exit()
-
-# run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
-
-# name = 'MOON-190411-1525'
-# centralpos=(97.5,21.8)
-# for i in range(1,5):
-# 	if i == 2 or i == 3:
-# 		plotlimit = 0.0001
-# 	else:
-# 		plotlimit = 0.0
-# 	for k in range(1,5):
-# 		filelist = []
-# 		hitlist = []
-# 		for pix in range(1,31):
-# 			filelist.append('/Users/mpeel/Documents/git/quijote/'+name+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-# 			hitlist.append('/Users/mpeel/Documents/git/quijote/'+name+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-# 		print(filelist)
-# 		run.combine_sky_maps(filelist,hitlist,'/Users/mpeel/Documents/git/quijote/'+name+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit)
-
-for i in range(1,5):
-	run.calc_P_angle_skymaps('/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_1_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_2_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_3_'+str(i)+'_skymap.fits','/Users/mpeel/Documents/git/quijote/MOON-190411-1525/combined_pol_'+str(i),centralpos=(97.5,21.8))
-
-exit()
 
 # pixels = [[1]]
 # channels = [[17]]
@@ -130,57 +91,3 @@ for i in range(0,len(pixels)):
 	data = run.get_eng('testdata/'+files[i],quiet=True)
 	run.plot_eng(data,pixel=pixels[i])
 exit()
-
-# pixelinfo = run.get_pixel_info(2457679.0,16)
-# print(pixelinfo)
-# print(pixelinfo['fp'])
-# exit()
-
-# run.stack_maps_tod('CRAB',['CRAB-190410-2025'],pixelrange=[3,4,5,21,22,23,24],detrange=[0],phaserange=[0],plotlimit=0.001,numfiles=30,dopol=False)
-# run.stack_maps_tod('HAZE',['HAZE-190411-0238','HAZE-190411-0626','HAZE-190412-0234','HAZE-190412-0622'],pixelrange=[3,4,5,21,22,23,24],detrange=[0],phaserange=[0],plotlimit=0.001,numfiles=50,dopol=False)
-# exit()
-# run.analyse_tod('CRAB-190311-1728',numfiles=1,pixelrange=[3,4,5,21,22,23,24],detrange=[0],dopol=True)
-# exit()
-# run.analyse_tod('CRAB-190409-2029',dopol=True,detrange=[0])
-# exit()
-# tgi.analyse_tod('testdata/CRAB-190410-1529',numfiles=14)
-# run.analyse_tod('CRAB-190410-2025',pixelrange=[23,24],detrange=[0],plotlimit=0.001,numfiles=50,dopol=True)
-# run.analyse_tod('CRAB-190410-2025',pixelrange=[3,4,5,21,22,23,24],plotlimit=0.001,numfiles=1)
-# for i in range(1,5):
-# 	run.combine_sky_maps(['/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_4_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_5_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_6_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_24_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/skymap_25_1_'+str(i)+'.fits'],['/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_4_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_5_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_6_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_24_1_'+str(i)+'.fits','/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/hitmap_25_1_'+str(i)+'.fits'],'/Users/mpeel/Documents/git/quijote/CRAB-190410-2025_pol/combined_'+str(i),centralpos=(184,-5))
-
-# run.analyse_tod('MOON-180919-1806',plotlimit=0.002,dopol=True)
-# run.analyse_tod('MOON-180921-2035',plotlimit=0.002,dopol=True)
-
-if 1:
-	# name = 'MOON-180919-1806'
-	# centralpos=(299,-20)
-	name = 'MOON-180921-2035'
-	centralpos=(325,-16)
-	name = 'CRAB-190409-2029'
-	centralpos=(84,22)
-	for i in range(1,5):
-		if i == 2 or i == 3:
-			plotlimit = 0.0001
-		else:
-			plotlimit = 0.0
-		for k in range(1,2):
-			filelist = []
-			hitlist = []
-			for pix in range(1,31):
-				filelist.append('/Users/mpeel/Documents/git/quijote/'+name+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-				hitlist.append('/Users/mpeel/Documents/git/quijote/'+name+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-			print(filelist)
-			run.combine_sky_maps(filelist,hitlist,'/Users/mpeel/Documents/git/quijote/'+name+'/combined2_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit)
-
-#run.analyse_tod('MOON-180921-2035',plotlimit=0.001,numfiles=50,dopol=True,plottods=False)
-
-exit()
-
-datasets = ['HAZE-190411-0238','CYGNUS-190411-0452','HAZE-190411-0626','CASS-190411-0840','CYGNUS-190411-0955','PERSEUS-190411-1134','PERSEUS-190411-1257','CASS-190411-1423','MOON-190411-1525','M42-190411-1631','PERSEUS-190411-1734','PERSEUS-190411-1858','CRAB-190411-2021']
-datasets = ['HAZE-190412-0234','CYGNUS-190412-0448','HAZE-190412-0622','CASS-190412-0836','CYGNUS-190412-0951','PERSEUS-190412-1131','PERSEUS-190412-1254','CASS-190412-1420']
-
-#run.analyse_tod('DIP000-190411-2120',pixelrange=[3,4,5,21,22,23,24],plotlimit=0.001)
-#run.analyse_tod('DIP000-190411-2143',pixelrange=[3,4,5,21,22,23,24],plotlimit=0.001)
-for dataset in datasets:
-	run.analyse_tod(dataset,plotlimit=0.001)

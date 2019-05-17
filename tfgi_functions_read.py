@@ -22,6 +22,48 @@ from scipy.optimize import curve_fit
 import os
 import astroplan
 
+# Read in a single pixel masterfile, and return the dictionary of the results
+def read_pixel_masterfile(filename,usefloat=False):
+	jd = 0
+	array = []
+	with open(filename) as f:
+		for line in f:
+			if jd == 0:
+				jd = float(line.strip())
+			else:
+				val = line.strip().split()
+				# Convert to integers
+				if usefloat:
+					val = [float(x) for x in val]
+				else:
+					val = [int(x) for x in val]
+				array.append(val)
+	return jd, array
+
+# Read in all of the pixel masterfiles
+def read_pixel_masterfiles(prefix,usefloat=False):
+	jds = []
+	arrays = []
+	for i in range(1,500):
+		print(prefix+format(i, '03d')+'.txt')
+		try:
+			jd, array = read_pixel_masterfile(prefix+format(i, '03d')+'.txt',usefloat=usefloat)
+		except:
+			break
+		jds.append(jd)
+		arrays.append(array)
+	return jds, arrays
+
+# Read in a pixel positions file, and return the dictionary of the results
+def read_pixel_positions(filename):
+	array = []
+	with open(filename) as f:
+		for line in f:
+			if '*' not in line:
+				val = line.strip().split()
+				array.append([int(val[0]), float(val[1]), float(val[2])])
+	return array
+
 def read_tod_files(indir, prefix, numpixels, numfiles=50,quiet=True):
 	# Read in the data
 	jd = np.empty(0)
