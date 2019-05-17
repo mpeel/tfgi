@@ -24,6 +24,7 @@ import astroplan
 from tgi_functions import *
 from tgi_functions_read import *
 import logging
+from astroutils import *
 
 def calc_beam_area(beam):
 	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
@@ -350,7 +351,8 @@ class tgi:
 		return newdata
 
 
-	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,plotmap=True,dopol=False,plotcombination=False,numfiles=50):
+	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,plotmap=True,dopol=False,plotcombination=True,numfiles=50):
+
 		print(self.outdir+'/'+prefix)
 		ensure_dir(self.outdir+'/'+prefix)
 
@@ -370,6 +372,7 @@ class tgi:
 		self.plot_tod(skypos.dec,self.outdir+'/'+prefix+'/plot_dec.png')
 		self.plot_tod(pa,self.outdir+'/'+prefix+'/plot_pa.png')
 		# exit()
+		aperflux_outputfile = open(self.outdir+'/'+prefix+'/aperflux.txt', "w")
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
@@ -460,13 +463,28 @@ class tgi:
 						conv = self.calc_JytoK(0.2,self.nu_fgi)
 						flux = 318.0
 
-					estimate = std*(flux/maxval)/np.sqrt(1000.0)
+					estimate = std*(flux/maxval)/np.sqrt(4000.0)
 					print('In Jy/sec:' + str(estimate))
 					print('In K/sec:' + str(estimate*conv))
-					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/1000)))
+					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
+
 
 					hp.write_map(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits',skymap,overwrite=True)
 					hp.write_map(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits',hitmap,overwrite=True)
+
+					pixel = np.where(skymap == maxval)
+					pos = hp.pix2ang(self.nside,pixel)
+					lon = pos[1] * 180.0/np.pi
+					lat = (np.pi/2.0 - pos[0]) * 180.0/np.pi
+					print(lon,lat)
+					if pixinfo['tgi'] == 1:
+						freq = 30.0
+					else:
+						freq = 40.0
+					res_arcmin = 4.0*np.pi / self.npix
+					aperflux = haperflux(skymap, freq, res_arcmin, lon[0][0], lat[0][0], 100.0, 100.0, 140.0, units='JyPix',column=0,nested=False, noise_model=0)
+					print(aperflux)
+					aperflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(aperflux[0])+'	'+str(aperflux[1])+'	'+str(aperflux[2]) + '\n')
 
 					if plotmap:
 						hp.mollview(skymap)
@@ -490,6 +508,11 @@ class tgi:
 						plt.close()
 						plt.clf()
 
+		aperflux_outputfile.close()
+		array = np.loadtxt(self.outdir+'/'+prefix+'/aperflux.txt')
+		x = range(0,len(array[:,4]))
+		plt.errorbar(x,array[:,4],yerr=array[:,5],fmt='r+')
+		plt.savefig(self.outdir+'/'+prefix+'/aperflux.pdf')
 
 		# Do some combined plots if requested
 		if plotcombination:

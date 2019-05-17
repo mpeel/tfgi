@@ -30,7 +30,20 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 # run = tgi.tgi(indir='/Volumes/proyectos/quijote2/tod/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt')
 run = tgi.tgi(indir='/Users/mpeel/Documents/git/quijote/testdata/',outdir='/Users/mpeel/Documents/git/quijote',pixelfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_pixel_masterfile.',pixelposfileloc='/Users/mpeel/Documents/git/quijote/etc/tgi_fgi_horn_positions_table.txt',polcalfileloc='/Users/mpeel/Documents/git/quijote/etc/qt2_masterfiles_new/qt2_polcal.')
 
-run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
+datasets = ['CRAB-190409-2029','190410-1529','CRAB-190410-2025','CRAB-190411-2021','MOON-190411-1525']
+for dataset in datasets:
+	run.analyse_tod(dataset,plotlimit=0.001,dopol=True,plottods=False)
+
+exit()
+
+#run.analyse_tod('CRAB-190411-2021',plotlimit=0.002,dopol=True,plottods=False)
+# run.analyse_tod('CRAB-190410-2025',plotlimit=0.002,dopol=True,plottods=False)
+# run.analyse_tod('CRAB-190410-1529',plotlimit=0.002,dopol=True,plottods=False)
+
+
+
+#run.analyse_tod('MOON-190411-1525',plotlimit=0.002,dopol=True,plottods=False)
+
 # name = 'MOON-190411-1525'
 # centralpos=(97.5,21.8)
 # for i in range(1,5):
@@ -104,6 +117,10 @@ for i in range(0,len(pixels)):
 	data = run.get_sci(files[i],quiet=True)
 	run.plot_sci(data,channels=channels[i],pixels=pixels[i],fix_neg=fix_neg[i],offset=True)
 exit()
+
+data = run.get_sci(['testdata/'+'pix5_cal-19-04-09-13-14-17-0000.sci2','testdata/'+'pix5_cal-19-04-09-13-14-17-0001.sci2'],quiet=True)
+run.plot_sci(data,channels=[25],pixels=[5],fix_neg=False,offset=True)
+
 
 # Run through the engineering data
 pixels = [5,17,23,26,41,42,63]
