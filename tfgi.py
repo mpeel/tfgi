@@ -26,6 +26,7 @@ from tfgi_functions_plot import *
 from tfgi_functions_read import *
 import logging
 from astroutils import *
+import datetime
 
 def calc_beam_area(beam):
 	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
@@ -138,6 +139,20 @@ class tfgi:
 			healpix_pixel = hp.ang2pix(self.nside, (np.pi/2)-Angle(skypos.dec).radian, Angle(skypos.ra).radian)
 			pos = (np.median(Angle(skypos.ra).degree),np.median((Angle(skypos.dec).degree)))
 		return healpix_pixel, pos
+
+	def write_healpix_map(self, data, prefix, outputname,headerinfo=[]):
+		extra_header = []
+		extra_header.append(("instrum",("tfgi")))
+		extra_header.append(("tgfi_v",(str(self.ver))))
+		extra_header.append(("obsname",(prefix)))
+		now = datetime.datetime.now()
+		extra_header.append(("writedat",(now.isoformat())))
+		# for args in extra_header:
+		# 	print(args[0].upper())
+		# 	print(args[1:])
+		hp.write_map(outputname,data,overwrite=True,extra_header=extra_header)
+		return 
+
 
 	# Plot a skydip with a fit
 	def plot_skydip(self,el,data,outputname):
@@ -421,8 +436,8 @@ class tfgi:
 					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
 
 
-					hp.write_map(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits',skymap,overwrite=True)
-					hp.write_map(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits',hitmap,overwrite=True)
+					write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+					write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
 
 					pixel = np.where(skymap == maxval)
 					pos = hp.pix2ang(self.nside,pixel)
@@ -480,10 +495,10 @@ class tfgi:
 						filelist.append(self.outdir+'/'+prefix+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
 						hitlist.append(self.outdir+'/'+prefix+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
 					print(filelist)
-					self.combine_sky_maps(filelist,hitlist,self.outdir+'/'+prefix+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit2)
+					self.combine_sky_maps(filelist,hitlist,prefix,self.outdir+'/'+prefix+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit2)
 
 			for i in range(1,5):
-				self.calc_P_angle_skymaps(self.outdir+'/'+prefix+'/combined_1_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_2_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_3_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_pol_'+str(i),centralpos=centralpos)
+				self.calc_P_angle_skymaps(self.outdir+'/'+prefix+'/combined_1_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_2_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_3_'+str(i)+'_skymap.fits',prefix,self.outdir+'/'+prefix+'/combined_pol_'+str(i),centralpos=centralpos)
 
 
 		# # Plot a boxcar average
@@ -549,13 +564,14 @@ class tfgi:
 				else:
 					skymap[pixnum][i] = hp.pixelfunc.UNSEEN
 
-			hp.write_map(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.fits',skymap[pixnum],overwrite=True)
+			write_healpix_map(skymap[pixnum],prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.fits')
+			write_healpix_map(hitmap[pixnum],prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'.fits')
+
 			hp.mollview(skymap[pixnum])
 			plt.savefig(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.png')
 			plt.close()
 			plt.clf()
-			hp.write_map(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'.fits',hitmap[pixnum],overwrite=True)
-			hp.mollview(hitmap[pixnum])
+			hp.mollview()
 			plt.savefig(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'.png')
 			hp.gnomview(skymap[pixnum],rot=centralpos,reso=5)
 			plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_'+str(pix+1)+'.png')
@@ -572,7 +588,7 @@ class tfgi:
 				plt.clf()
 		return
 
-	def combine_sky_maps(self,skymaps,hitmaps,outputname,centralpos=(0,0),plotlimit=0.0):
+	def combine_sky_maps(self,skymaps,hitmaps,prefix,outputname,centralpos=(0,0),plotlimit=0.0):
 
 		skymap = np.zeros(self.npix, dtype=np.float)
 		hitmap = np.zeros(self.npix, dtype=np.float)
@@ -596,12 +612,13 @@ class tfgi:
 			else:
 				skymap[i] = hp.pixelfunc.UNSEEN
 
-		hp.write_map(outputname+'_skymap.fits',skymap,overwrite=True)
+		write_healpix_map(skymap,prefix,outputname+'_skymap.fits')
+		write_healpix_map(hitmap,prefix,outputname+'_hitmap.fits')
+
 		hp.mollview(skymap)
 		plt.savefig(outputname+'_skymap.png')
 		plt.close()
 		plt.clf()
-		hp.write_map(outputname+'_hitmap.fits',hitmap,overwrite=True)
 		hp.mollview(hitmap)
 		plt.savefig(outputname+'_hitmap.png')
 		if plotlimit != 0.0:
@@ -614,7 +631,7 @@ class tfgi:
 
 		return
 
-	def calc_P_angle_skymaps(self,I_filename,Q_filename,U_filename,outputname,centralpos=(0,0),plotlimit=0.0):
+	def calc_P_angle_skymaps(self,I_filename,Q_filename,U_filename,prefix,outputname,centralpos=(0,0),plotlimit=0.0):
 		print(I_filename)
 		I = hp.read_map(I_filename)
 		Q = hp.read_map(Q_filename)
@@ -629,17 +646,18 @@ class tfgi:
 		frac[I == hp.pixelfunc.UNSEEN] = hp.pixelfunc.UNSEEN
 		frac[P < 0.1*np.max(P)] = hp.pixelfunc.UNSEEN
 
-		hp.write_map(outputname+'_P.fits',P,overwrite=True)
+		write_healpix_map(P,prefix,outputname+'_P.fits')
+		write_healpix_map(ang,prefix,outputname+'_ang.fits')
+		write_healpix_map(frac,prefix,outputname+'_pfrac.fits')
+
 		hp.mollview(P)
 		plt.savefig(outputname+'_P.png')
 		plt.close()
 		plt.clf()
-		hp.write_map(outputname+'_ang.fits',ang,overwrite=True)
 		hp.mollview(ang)
 		plt.savefig(outputname+'_ang.png')
 		plt.close()
 		plt.clf()
-		hp.write_map(outputname+'_Pfrac.fits',frac,overwrite=True)
 		hp.mollview(frac,min=0,max=10)
 		plt.savefig(outputname+'_Pfrac.png')
 		plt.close()

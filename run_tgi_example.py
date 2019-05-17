@@ -21,7 +21,7 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 basedir = '/Volumes/proyectos/quijote2/'
 # Set this to where you want to output stuff. The directory should already exist.
 # NB: subdirectories will automatically be created for each dataset.
-outdir = '/Users/mpeel/Documents/git/quijote/'
+outdir = '/Users/mpeel/Documents/git/quijote/output/'
 # Start the class
 run = tfgi.tfgi(outdir=outdir,\
 	datadir=basedir+'tod/',\

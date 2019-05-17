@@ -22,13 +22,17 @@ mpl.rcParams['agg.path.chunksize'] = 10000
 basedir = '/Users/mpeel/Documents/git/quijote/'
 # Set this to where you want to output stuff. The directory should already exist.
 # NB: subdirectories will automatically be created for each dataset.
-outdir = '/Users/mpeel/Documents/git/quijote/'
+outdir = '/Users/mpeel/Documents/git/quijote/output/'
 # Start the class
 run = tfgi.tfgi(outdir=outdir,\
 	datadir=basedir+'tod/',\
 	pixelfileloc=basedir+'etc/qt2_masterfiles_new/qt2_pixel_masterfile.',\
 	pixelposfileloc=basedir+'etc/tgi_fgi_horn_positions_table.txt',\
 	polcalfileloc=basedir+'etc/qt2_masterfiles_new/qt2_polcal.')
+
+test = np.zeros(12*16*16)
+run.write_healpix_map(test, 'MOON','test.fits')
+exit()
 
 # Search for CRAB and MOON observations in April 2019, and analyse them.
 datasets1 = run.find_observations('CRAB-1904')
