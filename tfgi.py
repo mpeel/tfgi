@@ -11,6 +11,7 @@ import numpy as np
 import healpy as hp
 import matplotlib.pyplot as plt
 import astropy.io.fits as fits
+from astropy.modeling import models, fitting
 import pandas as pd
 import scipy.fftpack
 from scipy import signal, optimize
@@ -24,9 +25,11 @@ import astroplan
 from tfgi_functions import *
 from tfgi_functions_plot import *
 from tfgi_functions_read import *
-import logging
 from astroutils import *
 import datetime
+import time
+# from skyfield.api import load, Topos
+import ephem
 
 def calc_beam_area(beam):
 	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
@@ -35,13 +38,26 @@ def calc_Tsys(std,B,t):
 	return std*np.sqrt(B*t)
 
 class tfgi:
-	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt",polcalfileloc="/net/nas/proyectos/quijote2/etc/qt2_polcal."):
+	def __init__(self,datadir="/net/nas/proyectos/quijote2/tod/",outdir='',pixelfileloc="/net/nas/proyectos/quijote2/etc/qt2_pixel_masterfile.",pixelposfileloc="/net/nas/proyectos/quijote2/etc/tgi_fgi_horn_positions_table.txt",polcalfileloc="/net/nas/proyectos/quijote2/etc/qt2_polcal.",nside=512):
 		self.numpixels = 31
 		self.datadir = datadir
 		self.outdir = outdir
 		self.telescope = EarthLocation(lat=28.300224*u.deg, lon=-16.510113*u.deg, height=2390*u.m)
+
+		# skyfield
+		# planets = load('de421.bsp')
+		# earth = planets['earth']
+		# self.observatory = earth + Topos('28.300224 N', '-16.510113 W',elevation_m=2390.0)
+		# ephem
+		# self.observer = ephem.Observer()
+		# observer.lon = lon
+		# observer.lat = lat
+		# observer.elevation = alt
+		# observer.date = utc
+		# print observer.radec_of(azimuth, elevation)
+
 		self.jd_ref = 2456244.5 # Taken as the first day of the Commissioning (13/Nov/2012, 0.00h)
-		self.nside = 512
+		self.nside = nside
 		self.npix = hp.nside2npix(self.nside)
 		self.pixeljds, self.pixelarrays = read_pixel_masterfiles(pixelfileloc)
 		self.polcaljds, self.polcalarrays = read_pixel_masterfiles(polcalfileloc,usefloat=True)
@@ -51,8 +67,12 @@ class tfgi:
 		# NB: Galactic doesn't work with hour angles
 		self.coordsys = 1 # 0 = Galactic, 1 = ICRS.
 
+		# Constants
 		self.k = 1.380e-23 # Boltzman constant m2 kg s-2 K-1
 		self.c = 2.9979e8
+
+		# Pointing model
+		self.Pmodel = {'P_f': -270.58, 'P_x': -1.71, 'P_y': -11.18, 'P_c': 1877.60, 'P_n': -1894.07, 'P_a': 10680.67, 'P_b': -593.53}
 
 		# Roughly
 		self.nu_tgi = 30e9
@@ -74,6 +94,12 @@ class tfgi:
 
 	def calc_JytoK(self,beam,freq):
 		return 1e-26*((self.c/freq)**2)/(2.0*self.k*calc_beam_area(beam))
+
+	def calc_farfield(self,diameter,frequency=0.0,wavelength=0.0):
+		if wavelength != 0.0:
+			return 2.0 * diameter**2 / wavelength
+		else:
+			return 2.0 * diameter**2 * frequency / self.c
 
 	def get_pixel_info(self, jd, das):
 		pixel_jd = [x for x in self.pixeljds if x <= jd][-1]
@@ -120,6 +146,29 @@ class tfgi:
 	def calc_positions(self, az, el, jd):
 		# Convert the az/el in the data to healpix pixel numbers
 		time = Time(jd[0]+self.jd_ref, format='jd')
+
+		# Using ephem
+
+		# Using skyfield - currently doesn't work
+		# print('Converting to sky position (1)')
+		# print(len(az[0]))
+		# for i in range(0,len(az[0])):
+		# 	print(time[i])
+		# 	print(az[0][i])
+		# 	print(self.observatory)
+		# 	a = self.observatory(jd[0][i]+self.jd_ref).from_altaz(alt_degrees=el[0][i], az_degrees=a[0][i])
+		# 	ra, dec, distance = a.radec(epoch=jd[0][i]+self.jd_ref)
+
+		# Apply the pointing model
+		# print('Applying pointing model')
+		# print(len(az))
+		# az,el = self.pointing_model(az[0],el[0])
+		# print(len(az))
+		print('Converting to sky position')
+		# # Could also do it this way - from the pointing code.
+		# c = SkyCoord(alt = el[0]*u.deg, az = az[0]*u.deg, unit = 'deg', frame= 'altaz', obstime = time, location = self.telescope)
+		# skypos=c.icrs
+
 		position = AltAz(az=az[0]*u.deg,alt=el[0]*u.deg,location=self.telescope,obstime=time)
 		if self.coordsys == 0:
 			skypos = position.transform_to(Galactic)
@@ -127,6 +176,7 @@ class tfgi:
 		else:
 			skypos = position.transform_to(ICRS)
 			# pa = []
+			print('Calculating position angles')
 			pa = self.apobserver.parallactic_angle(time,skypos)
 		return skypos,pa
 
@@ -153,30 +203,7 @@ class tfgi:
 		hp.write_map(outputname,data,overwrite=True,extra_header=extra_header)
 		return 
 
-
-	# Plot a skydip with a fit
-	def plot_skydip(self,el,data,outputname):
-		# Fit the skydip
-		params = [1,1,0]
-		param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_skydip, params, args=(el, data),full_output=True)
-		sigma_param_est = np.sqrt(np.diagonal(cov_x))
-		# Now plot things
-		plt.plot(el,data,'b.')
-		mesg_fit = (
-		r'$A={:5.3g}\pm{:3.2g}$'.format(
-			param_est[0], sigma_param_est[0]) + ','
-		r'$B={:5.3f}\pm{:3.2f}$'.format(
-			param_est[1], sigma_param_est[1]) + ','
-		r'     $C={:5.3f}\pm{:3.2f}$'.format(
-			param_est[2], sigma_param_est[2]))
-		plt.plot(el,fit_skydip(el,param_est),'g',label="Fit: " + mesg_fit)
-		plt.legend(prop={'size':8})
-		plt.savefig(outputname)
-		plt.close()
-		plt.clf()
-		return param_est
-
-	def plot_fft(self, data, outputname,samplerate=1000,numsmoothbins=50):
+	def plot_fft(self, data, outputname, samplerate=1000, numsmoothbins=50):
 		fft_w = np.fft.rfft(data)
 		fft_f = np.fft.rfftfreq(len(data), 1/samplerate)
 		fft_spectrum = np.abs(fft_w)
@@ -318,7 +345,7 @@ class tfgi:
 		return newdata
 
 
-	def analyse_tod(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,plotmap=True,dopol=False,plotcombination=True,numfiles=50):
+	def analyse_tod(self, prefix, pixelrange=range(0,31), detrange=range(0,4), phaserange=range(0,4), plotlimit=0.0, quiet=False, dofft=False, plottods=True, plotmap=True, dopol=False, plotcombination=True, numfiles=50):
 
 		print(self.outdir+'/'+prefix)
 		ensure_dir(self.outdir+'/'+prefix)
@@ -340,6 +367,7 @@ class tfgi:
 		plot_tfgi_tod(pa,self.outdir+'/'+prefix+'/plot_pa.png')
 		# exit()
 		aperflux_outputfile = open(self.outdir+'/'+prefix+'/aperflux.txt', "w")
+		gauflux_outputfile = open(self.outdir+'/'+prefix+'/_gauflux.txt', "w")
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
@@ -436,8 +464,8 @@ class tfgi:
 					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
 
 
-					write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
-					write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+					self.write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+					self.write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
 
 					pixel = np.where(skymap == maxval)
 					pos = hp.pix2ang(self.nside,pixel)
@@ -453,6 +481,42 @@ class tfgi:
 					print(aperflux)
 					aperflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(aperflux[0])+'	'+str(aperflux[1])+'	'+str(aperflux[2]) + '\n')
 
+					# Also do a Gaussian fit
+					pixels_tofit = query_ellipse(self.nside, lon[0][0], lat[0][0], 10.0, 1.0, 0.0)
+					pixels_tofit = pixels_tofit[skymap[pixels_tofit] != hp.pixelfunc.UNSEEN]
+					pixels_positions = hp.pix2ang(self.nside,pixels_tofit)
+					print(pixels_positions)
+					print(len(pixels_positions))
+					fit_w = fitting.LevMarLSQFitter()
+					gaussianfit = models.Gaussian2D(maxval, np.pi/2.0-lat[0][0]*np.pi/180.0, lon[0][0]*np.pi/180.0, 1.0*np.pi/180.0, 1.0*np.pi/180.0)
+					print(gaussianfit)
+					print('hello')
+					xi = pixels_positions[0]
+					yi = pixels_positions[1]
+					plt.plot(xi,skymap[pixels_tofit])
+					plt.savefig('test_x.png')
+					plt.clf()
+					plt.plot(yi,skymap[pixels_tofit])
+					plt.savefig('test_y.png')
+					plt.clf()
+					print(len(xi))
+					print(len(yi))
+					print(len(skymap[pixels_tofit]))
+					gauss = fit_w(gaussianfit, xi, yi, skymap[pixels_tofit])
+					print(gauss)
+					print(gauss.amplitude)
+					model_data = gauss(xi, yi)
+					print(model_data)
+					plt.plot(xi,model_data)
+					plt.savefig('test_x_model.png')
+					plt.clf()
+					plt.plot(yi,model_data)
+					plt.savefig('test_y_model.png')
+					plt.clf()
+					skymap_residual = skymap.copy()
+					skymap_residual[pixels_tofit] = skymap_residual[pixels_tofit] - model_data
+					gauflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(gauss.amplitude.value)+'	'+str(gauss.x_stddev.value*180.0/np.pi)+'	'+str(gauss.y_stddev.value*180.0/np.pi)+'	'+str(gauss.theta.value*180.0/np.pi) + '\n')
+
 					if plotmap:
 						hp.mollview(skymap)
 						plt.savefig(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
@@ -463,6 +527,8 @@ class tfgi:
 						plt.savefig(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						hp.gnomview(skymap,rot=centralpos,reso=5)
 						plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						hp.gnomview(skymap_residual,rot=centralpos,reso=5)
+						plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
 					if plotmap and plotlimit != 0.0:
@@ -476,6 +542,7 @@ class tfgi:
 						plt.clf()
 
 		aperflux_outputfile.close()
+		gauflux_outputfile.close()
 		array = np.loadtxt(self.outdir+'/'+prefix+'/aperflux.txt')
 		x = range(0,len(array[:,4]))
 		plt.errorbar(x,array[:,4],yerr=array[:,5],fmt='r+')
@@ -564,8 +631,8 @@ class tfgi:
 				else:
 					skymap[pixnum][i] = hp.pixelfunc.UNSEEN
 
-			write_healpix_map(skymap[pixnum],prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.fits')
-			write_healpix_map(hitmap[pixnum],prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'.fits')
+			self.write_healpix_map(skymap[pixnum],prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.fits')
+			self.write_healpix_map(hitmap[pixnum],prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'.fits')
 
 			hp.mollview(skymap[pixnum])
 			plt.savefig(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.png')
@@ -612,8 +679,8 @@ class tfgi:
 			else:
 				skymap[i] = hp.pixelfunc.UNSEEN
 
-		write_healpix_map(skymap,prefix,outputname+'_skymap.fits')
-		write_healpix_map(hitmap,prefix,outputname+'_hitmap.fits')
+		self.write_healpix_map(skymap,prefix,outputname+'_skymap.fits')
+		self.write_healpix_map(hitmap,prefix,outputname+'_hitmap.fits')
 
 		hp.mollview(skymap)
 		plt.savefig(outputname+'_skymap.png')
@@ -646,9 +713,9 @@ class tfgi:
 		frac[I == hp.pixelfunc.UNSEEN] = hp.pixelfunc.UNSEEN
 		frac[P < 0.1*np.max(P)] = hp.pixelfunc.UNSEEN
 
-		write_healpix_map(P,prefix,outputname+'_P.fits')
-		write_healpix_map(ang,prefix,outputname+'_ang.fits')
-		write_healpix_map(frac,prefix,outputname+'_pfrac.fits')
+		self.write_healpix_map(P,prefix,outputname+'_P.fits')
+		self.write_healpix_map(ang,prefix,outputname+'_ang.fits')
+		self.write_healpix_map(frac,prefix,outputname+'_pfrac.fits')
 
 		hp.mollview(P)
 		plt.savefig(outputname+'_P.png')
@@ -744,16 +811,18 @@ class tfgi:
 
 		return
 
-	def analyse_skydip(self, prefix,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,plottods=True,dopol=False,numfiles=50,minel=35.0,maxel=85.0,numelbins=100,plotindividual=False):
+	def analyse_skydip(self, prefix, pixelrange=range(0,31), detrange=range(0,4), phaserange=range(0,4), plotlimit=0.0, quiet=False, plottods=False, dopol=False, numfiles=50, minel=35.0, maxel=85.0, numelbins=100, plotindividual=False):
 		print(self.outdir+'/'+prefix)
 		ensure_dir(self.outdir+'/'+prefix)
 
 		atm_tgi = 5.0
 		atm_fgi = 10.0
 
-		# Start a log file
-		logging.basicConfig(filename=self.outdir+'/'+prefix+'/log_skydip.log',level=logging.DEBUG)
-		logging.info('Assuming atmosphere of ' + str(atm_tgi) + 'K for TGI and ' + str(atm_fgi) + 'K for FGI')
+		meas_outputfile = open(self.outdir+'/'+prefix+'/measurements.txt', "w")
+		avg_outputfile = open(self.outdir+'/'+prefix+'/measurements_avg.txt', "w")
+		std_outputfile = open(self.outdir+'/'+prefix+'/measurements_std.txt', "w")
+		meas_outputfile.write('#Assuming atmosphere of ' + str(atm_tgi) + 'K for TGI and ' + str(atm_fgi) + 'K for FGI\n')
+		std_outputfile.write('#Assuming atmosphere of ' + str(atm_tgi) + 'K for TGI and ' + str(atm_fgi) + 'K for FGI\n')
 		# Read in the data
 		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
 
@@ -761,7 +830,7 @@ class tfgi:
 		tempmask = el[0].copy()
 		tempmask[tempmask < minel] = 0.
 		tempmask[tempmask > maxel] = 0.
-		plot_tfgi_tod(tempmask,self.outdir+'/'+prefix+'/mask.pdf')
+		# plot_tfgi_tod(tempmask,self.outdir+'/'+prefix+'/mask.pdf')
 		skydip_mask = tempmask.copy()
 		# Find out whether we're going up or down in elevation
 		for i in range(1,len(skydip_mask)):
@@ -821,6 +890,7 @@ class tfgi:
 
 					# Plot the individual skydips
 					elbins = np.zeros((5,num_skydips,numelbins))
+					avg_systemp = 0.0
 					for i in range(1,num_skydips):
 
 						elstep = (maxel-minel)/float(numelbins)
@@ -841,6 +911,13 @@ class tfgi:
 						# Before doing the std, subtract out a fit
 						params = [1,1]#,0]
 						param_est, cov_x, infodict, mesg_result, ret_value = optimize.leastsq(compute_residuals_skydip, params, args=(elbins[0][i], elbins[1][i]),full_output=True)
+						if pixinfo['tgi'] == 1:
+							systemp = (param_est[0]/(param_est[1]*np.sin(60.0*np.pi/180.0)))*atm_tgi
+						else:
+							systemp = (param_est[0]/(param_est[1]*np.sin(60.0*np.pi/180.0)))*atm_fgi
+						avg_systemp = avg_systemp + systemp
+						meas_outputfile.write(str(pix) + "	" + str(det) + "	" + str(j) + '	' + str(i) + "	" + str(systemp) + '	' + str(param_est[0]) + "	" + str(param_est[1])+'\n')
+
 
 						for k in range(0,numelbins):
 							elstepmin = minel+k*elstep
@@ -857,10 +934,12 @@ class tfgi:
 
 
 						if plotindividual:
-							self.plot_skydip(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-							# self.plot_skydip(elbins[0][i],elbins[2][i],self.outdir+'/'+prefix+'/average_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-							self.plot_skydip(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-							# self.plot_skydip(elbins[0][i],elbins[4][i],self.outdir+'/'+prefix+'/std_average_fit_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							plot_tfgi_skydip(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							# plot_tfgi_skydip(elbins[0][i],elbins[2][i],self.outdir+'/'+prefix+'/average_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							plot_tfgi_skydip(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							# plot_tfgi_skydip(elbins[0][i],elbins[4][i],self.outdir+'/'+prefix+'/std_average_fit_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+
+					avg_outputfile.write(str(pix) + "	" + str(det) + "	" + str(j) + "	" + str(avg_systemp/num_skydips)+'\n')
 
 					# Combine the sky dips into one plot
 					for i in range(1,num_skydips):
@@ -900,11 +979,11 @@ class tfgi:
 					plt.plot(elbins[0][1],skydip_fitted,'g',label="Fit: " + mesg_fit)
 
 					if pixinfo['tgi'] == 1:
-						systemp = (param_est[0]/param_est[1])*atm_tgi
+						systemp = (param_est[0]/(param_est[1]*np.sin(60.0*np.pi/180.0)))*atm_tgi
 					else:
-						systemp = (param_est[0]/param_est[1])*atm_fgi
+						systemp = (param_est[0]/(param_est[1]*np.sin(60.0*np.pi/180.0)))*atm_fgi
 
-					print('DAS '+str(pix) + ' Tsys estimate: ' + str(systemp))
+					std_outputfile.write(str(pix) + "	" + str(det) + "	" + str(j) + '	' + str(systemp) + '	' + str(param_est[0]) + '	' + str(param_est[1])+'\n')
 
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')
@@ -969,6 +1048,9 @@ class tfgi:
 					plt.close()
 					plt.clf()
 
+		meas_outputfile.close()
+		avg_outputfile.close()
+		std_outputfile.close()
 
 		return
 
@@ -1462,3 +1544,370 @@ class tfgi:
 		plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
 		fig.savefig('plot_eng_'+str(pixel)+'.pdf')
 		return
+
+
+# #################
+# # Horizon to equatorial conversion using the pointing model, functions:
+
+# # hor2sky(Jd, A, E, horn): 	
+# # INPUT: time [Jd], hor coord (A,E) [deg], horn number 
+# # OUTPUT: dictionary = {ra (deg), dec (deg)} 
+
+# # sky2hor(Jd, ra, dec, horn): 
+# # INPUT: time [Jd], sky coord: (ra, dec) [deg], horn number
+# # OUTPUT: dictionary = {Jd (jd), A (deg), E (deg)} 
+
+# # Note: they take array (or scalar) as coord imput and return a dictionary of arrays 
+# # (or scalars) as coord output; integer for horn
+
+# # Pmodel value (central horn)
+
+# #################
+
+
+
+# # Variables
+# f = 3700 # [mm]  focal lenght
+
+
+# # Teide obs location
+# latitude = Angle('28.300218', unit='deg')  # latitude deg
+# longitude = Angle('-16.510114', unit='deg') # longitude deg
+# height= 2395.0000 # altitude m
+# loc = EarthLocation.from_geodetic(lon=longitude,lat=latitude, height= height)
+
+
+# # Main Pointing model function
+
+	# Apply the pointing model. Code originally by Felice.
+	# INPUT: az_in [deg], el_in [deg], way (= 1-Direct, 2-Inverse)
+	# OUTPUT: dic = {A [deg], E [deg]} corrected
+	def pointing_model(self,az_in, el_in, way=1):
+
+		d2r = np.pi/180 # degrees to radians
+		r2d = 1/d2r  # radians to degrees
+		as2r = 1/3600 * d2r # arcseconds to radians
+
+		P_f = self.Pmodel['P_f'] * as2r
+		P_x = self.Pmodel['P_x'] * as2r
+		P_y = self.Pmodel['P_y'] * as2r
+		P_c = self.Pmodel['P_c'] * as2r
+		P_n = self.Pmodel['P_n'] * as2r
+		P_a = self.Pmodel['P_a'] * as2r * r2d
+		P_b = self.Pmodel['P_b'] * as2r * r2d
+
+		if way != 1 and way !=2:
+			print("wrong way")
+			return 0
+
+
+		########################################### DIRECT
+		if way == 1:
+
+			# reading input angles
+			A = az_in
+			E = el_in
+
+			# computing cartesian components
+			A = A * d2r
+			E = E * d2r
+			x = - np.cos(E) * np.cos(A)
+			y = np.cos(E) * np.sin(A)
+			z = np.sin(E)
+
+			# 1) Hooke s Law Vertical Flexure (a)
+			xa = x - P_f*z*x
+			ya = y - P_f*z*y
+			za= z + P_f*(x**2 +y**2)
+
+			# 2) Roll-axis misalignment (b)
+			xb = xa + P_x*za
+			yb = ya + P_y*za
+			zb = za - P_x*xa - P_y*ya
+
+			# 3) Non perpendicularities (c)
+			w = (P_c+P_n*zb)/np.sqrt(xb**2 +yb**2)
+			xc = xb + w*(yb - w*xb)
+			yc = yb - w*(xb + w*yb)
+			zc = zb
+
+			# changing to angular coordinates:
+			E_c = np.arcsin(zc/np.sqrt(xc**2 + yc**2 + zc**2))
+			A_c = np.pi - np.arctan2(yc,xc)
+
+			# changing to degrees:
+			E_c = E_c * r2d
+			A_c = A_c * r2d
+
+			# 4) encoder offset errors
+			A_enc = A_c + P_a
+			E_enc = E_c - P_b
+
+			# Final
+			az_fin = A_enc
+			el_fin = E_enc
+
+
+
+		########## INVERSE
+
+		if way == 2:
+
+			count = 0
+
+			s = 10**(-5) # same value till 6, stil work for 7, but get different value
+			i_max = 10**(3) # max iteracations
+			i = 0
+
+			# reading input angles
+			A_enc = az_in
+			E_enc = el_in
+
+			#### 4) encoder offset errors (c)
+			A_c = A_enc - P_a
+			E_c = E_enc + P_b
+
+			# Derive (x,y,z) pointing location.
+			E_c = E_c * d2r
+			A_c = A_c * d2r
+			x = -np.cos(E_c) * np.cos(A_c)
+			y = np.cos(E_c) * np.sin(A_c)
+			z = np.sin(E_c)
+
+			#### Non perpendicularities (b)
+			# First Delta r
+			w = (P_c + P_n*z) / np.sqrt(x**2 + y**2)
+			deltax= w*(y - w*x)
+			deltay= - w*(x + w*y)
+			deltaz= 0
+
+			# First Correction
+			xa = x - deltax
+			ya = y - deltay
+			za = z - deltaz
+
+			# Iterative process 
+			while i < i_max:
+				# Correction n
+				w=(P_c+P_n*za)/np.sqrt(xa**2 +ya**2)
+				deltaxn= w*(ya - w*xa)
+				deltayn= - w*(xa + w*ya)
+				deltazn= 0
+				xa = x - deltaxn
+				ya = y - deltayn
+				za = z - deltazn
+
+				# Correction n+1
+				deltaxn1= w*(ya - w*xa)
+				deltayn1= - w*(xa + w*ya)
+				deltazn1= 0
+				xa = x - deltaxn1
+				ya = y - deltayn1
+				za = z - deltazn1
+
+				i = i+1
+				# Compare corrections n and n+1
+				if (np.abs(deltaxn-deltaxn1) < s) and (np.abs(deltayn-deltayn1) < s):
+					i = i_max
+			i = 0  #reset i
+
+			#### 2) Roll-axis misalignment (b)
+			# First Delta r
+			deltax= - P_x*za
+			deltay= - P_y*za
+			deltaz= + P_x*xa + P_y*ya
+
+			# First Correction
+			xb = xa + deltax
+			yb = ya + deltay
+			zb = za + deltaz
+
+			# Iterative process 
+			while i < i_max:
+				# Correction n
+				deltaxn= - P_x*zb
+				deltayn= - P_y*zb
+				deltazn= + P_x*xb + P_y*yb
+				xb = xa + deltaxn
+				yb = ya + deltayn
+				zb = za + deltazn
+
+				# Correction n+1
+				deltaxn1= - P_x*zb
+				deltayn1= - P_y*zb
+				deltazn1= + P_x*xb + P_y*yb
+				xb = xa + deltaxn1
+				yb = ya + deltayn1
+				zb = za + deltazn1
+
+				i = i+1
+
+				# Compare corrections n and n+1
+				if (np.abs(deltaxn-deltaxn1) < s) and (np.abs(deltayn-deltayn1) < s) and (np.abs(deltazn-deltazn1) < s):
+					i = i_max
+			i=0
+			
+
+
+			### 1) Hooke’s Law Vertical Flexure (c)
+			# First Delta r
+			deltax= P_f*zb*xb
+			deltay= P_f*zb*yb
+			deltaz= - P_f*(xb**2 + yb**2)
+
+			# First Correction
+			xc = xb + deltax
+			yc = yb + deltay
+			zc = zb + deltaz
+
+			# Iterative process 
+			while i < i_max:
+				# Correction n
+				deltaxn= P_f*zc*xc
+				deltayn= P_f*zc*yc
+				deltazn= - P_f*(xc**2 + yc**2)
+				xc = xb + deltaxn
+				yc = yb + deltayn
+				zc = zb + deltazn
+
+				# Correction n+1
+				deltaxn1= P_f*zc*xc
+				deltayn1= P_f*zc*yc
+				deltazn1= - P_f*(xc**2 + yc**2)
+				xc = xb + deltaxn1
+				yc = yb + deltayn1
+				zc = zb + deltazn1
+
+				i = i+1
+
+				# Compare corrections n and n+1
+				if (np.abs(deltaxn-deltaxn1) < s) and (np.abs(deltayn-deltayn1) < s) and (np.abs(deltazn-deltazn1) < s):
+					i = i_max
+			i=0
+
+
+			# changing to angular coordinates:
+			E=np.arcsin(zc/np.sqrt(xc**2 +yc**2 +zc**2)) 
+			A = np.pi - np.arctan2(yc,xc)
+			# changing to degrees
+			E = E * r2d
+			A = A * r2d
+			# Final
+			az_fin = A
+			el_fin = E
+
+		# Create output 
+		data = {'A':az_fin,'E':el_fin}
+		
+		return [az_fin],[el_fin]
+
+
+# def position(das):
+
+# 	# IMPUT: horn number
+# 	# OUTPUT: dict= {x, y} [mm]
+# 	# PROP: return the position of the horn in the focal plane
+
+# 	x = [0, #horn 1  -- in the center
+# 		 86.639,43.319,-43.319,-86.639,-43.319,43.319, #horns 2 to 7 -- r~86.64 mm
+# 		 129.958,0,-129.958,-129.958,0,-129.958, #horns 8 to 13 --  r~150.07
+# 		 173.278,86.639,-86.639,-173.278,-86.639,86.639, #horns 14 to 19 --  r~173.28
+# 		 216.597,173.278,43.319,-43.319,-173.278,-216.597,-216.597,
+# 		 -173.278,-43.319,43.319,173.278,216.597] #horns 20 to 31 --  r~229.22
+
+# 	y = [0, #horn 1  -- in the center
+# 		 0,75.027,75.027,0,-75.027,-75.027, #horns 2 to 7 -- r~86.64 mm
+# 	 	 75.027,150.065,75.027,-75.027,-150.065,-75.027, #horns 8 to 13 --  r~150.07 	 
+#   	     0,150.065,150.065,0,-150.065,-150.065, #horns 14 to 19 --  r~173.28
+#   	     75.027,150.065,225.092,225.092,150.065,75.027,-75.027,-150.065,
+#   	     -225.092,-225.092,-150.065,-75.027] #horns 20 to 31 --  r~229.22
+
+# 	horn = das2pos(das)
+
+# 	pos = {'x':x[horn], 'y':y[horn]}
+# 	return pos 
+
+
+
+# def horn_projection(A,E,horn,way):
+
+# 	# IMPUT: A [deg], E [deg], horn
+# 	# OUTPUT: dic = {A [deg], E [deg]} 
+# 	# PROP: correct the azimuth and elevation considering the horn position	
+
+# 	# Get the position
+# 	pos = position(horn)
+# 	x = - pos['x']/f 
+# 	y = pos['y']/f 
+
+# 	# Convert in radians
+# 	A = A * d2r
+# 	E = E * d2r
+
+# 	# Compute the correction
+# 	tandA = x*np.cos(E)*(1+np.tan(E)**2)/(1-y*np.tan(E))
+# 	dA = np.arctan(tandA)
+# 	K = np.cos(dA)*(y+np.tan(E))/(1-y*np.tan(E))
+# 	tandE = (K - np.tan(E))/(1+K*np.tan(E))
+# 	dE = np.arctan(tandE)
+
+# 	# Add corrections to coordinates, convert in degrees
+# 	if way == 1:
+# 		A = (A + dA) * r2d
+# 		E = (E + dE) * r2d
+# 	elif way == 2:
+# 		A = (A - dA) * r2d
+# 		E = (E - dE) * r2d
+# 	else: 
+# 		print('wrong way input')		
+
+# 	out = {'A':A, 'E':E}
+
+# 	return out
+
+
+
+
+
+# ############# Final function
+
+
+# def hor2sky(Jd, A, E, horn):
+
+
+# 	# INPUT: time [Jd], hor coord (A,E) [deg], horn
+# 	# OUTPUT: dic = {ra (deg), dec (deg)} corrected by pointing model
+# 	# PROP: Pass from the horizon coord to the sky coord applying the pointing model
+
+# 	# Transformation from encoder coord to nominal coord using pointing model
+# 	print('- Pmodel correction')
+# 	ns = int(len(Jd))
+# 	A_nom = np.zeros(shape=(ns))
+# 	E_nom = np.zeros(shape=(ns))
+# 	for i in range(len(Jd)):
+# 		AzEl_true = pointing_model(A[i], E[i], 2, **Pmodel)
+# 		A_nom[i] = AzEl_true['A']
+# 		E_nom[i] = AzEl_true['E']
+# 	A = A_nom
+# 	E = E_nom
+
+# 	# Correction for horn position
+# 	print('- Horn correction')
+# 	altaz_horn = horn_projection(A,E,horn,1)
+# 	A = altaz_horn['A']
+# 	E = altaz_horn['E']
+
+# 	# Pass  from horizon to sky 
+# 	print('- Transformation hor2sky')
+# 	jd = Time(Jd, format = 'jd')
+# 	c = SkyCoord(alt = E, az = A, unit = 'deg', frame= 'altaz', obstime = jd, location = loc)
+# 	c_icrs=c.icrs
+# 	ra = c_icrs.ra.degree
+# 	dec = c_icrs.dec.degree
+
+# 	out = {'ra':ra, 'dec': dec}
+
+# 	print('##########')
+
+# 	return out
+

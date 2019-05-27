@@ -14,6 +14,11 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import tfgi
 
+#
+# NB: documentation is at:
+# https://docs.google.com/document/d/13CzBq_ABo7NTrcoM9C_v25ws_2t3GHdxKEKEkGspegA
+#
+
 # This is needed if you want to write out lots of plots
 mpl.rcParams['agg.path.chunksize'] = 10000
 
@@ -27,7 +32,8 @@ run = tfgi.tfgi(outdir=outdir,\
 	datadir=basedir+'tod/',\
 	pixelfileloc=basedir+'etc/qt2_masterfiles_new/qt2_pixel_masterfile.',\
 	pixelposfileloc=basedir+'etc/tgi_fgi_horn_positions_table.txt',\
-	polcalfileloc=basedir+'etc/qt2_masterfiles_new/qt2_polcal.')
+	polcalfileloc=basedir+'etc/qt2_masterfiles_new/qt2_polcal.',
+	nside = 512)
 
 # Search for CRAB and MOON observations in April 2019, and analyse them.
 datasets1 = run.find_observations('CRAB-1904')

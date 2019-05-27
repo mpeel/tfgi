@@ -26,18 +26,29 @@ outdir = '/Users/mpeel/Documents/git/quijote/output/'
 # Start the class
 run = tfgi.tfgi(outdir=outdir,\
 	datadir=basedir+'tod/',\
-	pixelfileloc=basedir+'etc/qt2_masterfiles_new/qt2_pixel_masterfile.',\
+	pixelfileloc=basedir+'etc/qt2_pixel_masterfile.',\
 	pixelposfileloc=basedir+'etc/tgi_fgi_horn_positions_table.txt',\
 	polcalfileloc=basedir+'etc/qt2_masterfiles_new/qt2_polcal.')
 
-test = np.zeros(12*16*16)
-run.write_healpix_map(test, 'MOON','test.fits')
-exit()
+# frequencies = [150e9,220e9,11e9,30e9,40e9]
+# diameters = [0.22,0.22,2.5,2.5,2.5]
+# for i in range(0,len(frequencies)):
+# 	print(run.calc_farfield(diameters[i],frequency=frequencies[i]))
+# exit()
 
-# Search for CRAB and MOON observations in April 2019, and analyse them.
-datasets1 = run.find_observations('CRAB-1904')
-datasets2 = run.find_observations('MOON-1904')
-datasets = list(set(datasets1) | set(datasets2))
+
+
+# run.analyse_tod('CYGNUS-190411-0452',numfiles=1)
+
+# run.analyse_tod('MOON-190411-1525')
+# exit()
+# run.analyse_skydip('DIP000-190411-2120',dopol=True)
+# exit()
+
+# datasets = run.find_observations('MOON-19')
+datasets = run.find_observations('DIP')
+# datasets2 = run.find_observations('CRAB-1903')
+# datasets = list(set(datasets1) | set(datasets2))
 print(datasets)
 for dataset in datasets:
 	# You can set options for the reduction in the next line. The options and their defaults are:
@@ -52,7 +63,8 @@ for dataset in datasets:
 	# dopol=False             - set to true to change from detector to polarised outputs
 	# plotcombination=True    - set to false to disable creating a combined map
 	# numfiles=50             - set to a lower number to only read in the first files of each observation
-	run.analyse_tod(dataset,plotlimit=0.001,dopol=True,plottods=False)
+	run.analyse_skydip(dataset,dopol=False)
+	# run.analyse_tod(dataset,plotlimit=0.001,dopol=False,plottods=False)
 
 exit()
 
