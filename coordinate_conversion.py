@@ -9,6 +9,7 @@
 
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz, ICRS, Angle
 from astropy.time import Time
+# import astropy_speedups
 import astropy.units as u
 import numpy as np
 import time
@@ -36,8 +37,16 @@ start = time.time()
 timearr = Time(times, format='jd')
 positions = convert_azel_radec(az,el,timearr)
 print(positions)
-
+print(positions.ra.degree)
 # Print the runtime
 end = time.time()
 print(str(end-start) + ' seconds')
 
+comparison_array = np.loadtxt('comparison.txt',unpack=True)
+# print(comparison_array[:,0])
+print(np.max(comparison_array[:,0]-positions.ra.degree))
+print(np.max(comparison_array[:,1]-positions.dec.degree))
+# except:
+# 	print('Could not find comparison file')
+
+# np.savetxt('comparison.txt',[positions.ra.degree,positions.dec.degree])

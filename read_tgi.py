@@ -38,7 +38,9 @@ run = tfgi.tfgi(outdir=outdir,\
 
 
 
-# run.analyse_tod('CYGNUS-190411-0452',numfiles=1)
+run.analyse_tod('CRAB-190301-1807',dopol=True)
+# run.analyse_tod('CYGNUS-190411-0452',dopol=True)
+exit()
 
 # run.analyse_tod('MOON-190411-1525')
 # exit()

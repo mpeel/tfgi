@@ -19,6 +19,7 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Galactic, ICRS, FK5
 from astropy.time import Time
 from astropy.coordinates import Angle
+import astropy_speedups
 from scipy.optimize import curve_fit
 import os
 import astroplan
@@ -28,8 +29,11 @@ from tfgi_functions_read import *
 from astroutils import *
 import datetime
 import time
+import skyfield
+import skyfield.api as sfa
 # from skyfield.api import load, Topos
 import ephem
+import multiprocessing as mp
 
 def calc_beam_area(beam):
 	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
@@ -45,9 +49,9 @@ class tfgi:
 		self.telescope = EarthLocation(lat=28.300224*u.deg, lon=-16.510113*u.deg, height=2390*u.m)
 
 		# skyfield
-		# planets = load('de421.bsp')
-		# earth = planets['earth']
-		# self.observatory = earth + Topos('28.300224 N', '-16.510113 W',elevation_m=2390.0)
+		planets = sfa.load('de421.bsp')
+		earth = planets['earth']
+		self.sfobservatory = earth + sfa.Topos('28.300224 N', '-16.510113 W',elevation_m=2390.0)
 		# ephem
 		# self.observer = ephem.Observer()
 		# observer.lon = lon
@@ -81,15 +85,15 @@ class tfgi:
 		self.B_fgi = 8e9
 
 		# Stable version control
-		self.ver = 0.1
+		self.ver = 0.2
 
 	def find_observations(self,searchtext):
 		results = []
 		for file in os.listdir(self.datadir):
-		    if searchtext in file:
-		    	obsname = "-".join(file.split("-")[:-1])
-		    	if obsname not in results:
-		    		results.append(obsname)
+			if searchtext in file:
+				obsname = "-".join(file.split("-")[:-1])
+				if obsname not in results:
+					results.append(obsname)
 		return results
 
 	def calc_JytoK(self,beam,freq):
@@ -141,43 +145,91 @@ class tfgi:
 		# Moved into tgi_functions_read.py
 		return read_tod_files(self.datadir, prefix, self.numpixels, numfiles=numfiles,quiet=quiet)
 
+	def convert_azel_radec(inputarr):
+		az,el,timearr=inputarr
+		return position.AltAz(az=az*u.deg,alt=el*u.deg,location=self.telescope,obstime=timearr).transform_to(ICRS)
+
 	# Note: this is currently slow and over-precise, see
 	# https://github.com/astropy/astropy/pull/6068
 	def calc_positions(self, az, el, jd):
-		# Convert the az/el in the data to healpix pixel numbers
-		time = Time(jd[0]+self.jd_ref, format='jd')
 
-		# Using ephem
-
-		# Using skyfield - currently doesn't work
-		# print('Converting to sky position (1)')
-		# print(len(az[0]))
-		# for i in range(0,len(az[0])):
-		# 	print(time[i])
-		# 	print(az[0][i])
-		# 	print(self.observatory)
-		# 	a = self.observatory(jd[0][i]+self.jd_ref).from_altaz(alt_degrees=el[0][i], az_degrees=a[0][i])
-		# 	ra, dec, distance = a.radec(epoch=jd[0][i]+self.jd_ref)
-
+		timearr = Time(jd[0]+self.jd_ref, format='jd')
+		# print(jd[0][0])
+		# print(jd[0][1]-jd[0][0])
+		# exit()
 		# Apply the pointing model
-		# print('Applying pointing model')
-		# print(len(az))
-		# az,el = self.pointing_model(az[0],el[0])
-		# print(len(az))
-		print('Converting to sky position')
+		print('Applying pointing model')
+		az,el = self.pointing_model(az[0],el[0])
+
+
+		# This was using skyfield - but it's slow.
+		# print('Converting to sky position (1)')
+		# start = time.time()
+		# timing = sfa.load.timescale()
+		# times = timing.tt_jd(jd[0]+self.jd_ref)
+		# ra,dec,distance = self.sfobservatory.at(times).from_altaz(alt_degrees=el[0], az_degrees=az[0]).radec(epoch=times)
+		# end = time.time()
+		# print(end-start)
+		# print(ra)
+		# print(dec)
+
+
+
+		# print('Converting to sky position(1)')
+		# start = time.time()
+		# factor=10
+		# position = AltAz(az=az[0][::factor]*u.deg,alt=el[0][::factor]*u.deg,location=self.telescope,obstime=timearr[::factor])
+		# skypos_part = position.transform_to(ICRS)
+
+		# # interpolate
+		# dt = (timearr - timearr[0]).sec
+		# dtp = dt[::factor]
+		# def interpolate(q):
+		# 	return np.interp(dt, dtp, q.value) * q.unit
+
+		# skypos_compare = SkyCoord(ra=interpolate(skypos_part.ra),
+  #                       dec=interpolate(skypos_part.dec),frame=ICRS)
+		# print(skypos_compare)
+		# end = time.time()
+		# print(end-start)
+
+
+		# print("Number of processors: ", mp.cpu_count())
+		# start = time.time()
+		# pool = mp.Pool(mp.cpu_count())
+		# numsets=100
+		# setsize = len(az[0])//numsets
+		# print(setsize)
+		# inputarr = [az[0][:],el[0][:],timearr[:]]
+
+		# skypos = [pool.apply(self.convert_azel_radec,args=(az[0][i*setsize:(i+1)*setsize-1],el[0][i*setsize:(i+1)*setsize-1],timearr[i*setsize:(i+1)*setsize-1])) for i in range(0,numsets)]
+		# pool.close()
+		# end = time.time()
+		# print(end-start)
+		# exit()
+		# print('Converting to sky position(3)')
+
 		# # Could also do it this way - from the pointing code.
 		# c = SkyCoord(alt = el[0]*u.deg, az = az[0]*u.deg, unit = 'deg', frame= 'altaz', obstime = time, location = self.telescope)
 		# skypos=c.icrs
 
-		position = AltAz(az=az[0]*u.deg,alt=el[0]*u.deg,location=self.telescope,obstime=time)
+		# start = time.time()
+		position = AltAz(az=az[0]*u.deg,alt=el[0]*u.deg,location=self.telescope,obstime=timearr)
 		if self.coordsys == 0:
 			skypos = position.transform_to(Galactic)
 			pa = []
 		else:
 			skypos = position.transform_to(ICRS)
+			# end = time.time()
+			# print(end-start)
+			# print(skypos)
+			# print(np.max(skypos.ra-skypos_compare.ra))
+			# print(np.max(skypos.dec-skypos_compare.dec))
+			# exit()
 			# pa = []
 			print('Calculating position angles')
-			pa = self.apobserver.parallactic_angle(time,skypos)
+			pa = self.apobserver.parallactic_angle(timearr,skypos)
+			print('Done with positions')
 		return skypos,pa
 
 	def calc_healpix_pixels(self, skypos):
@@ -207,16 +259,6 @@ class tfgi:
 		fft_w = np.fft.rfft(data)
 		fft_f = np.fft.rfftfreq(len(data), 1/samplerate)
 		fft_spectrum = np.abs(fft_w)
-		#fft_spectrum = np.abs(fft_w)**2
-		# plt.plot(fft_f, fft_spectrum)
-		# plt.xscale("log")
-		# plt.yscale("log")
-		# plt.savefig(self.outdir+'/'+prefix+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-		# plt.clf()
-		# plt.plot(fft_f, fft_spectrum)
-		# plt.yscale("log")
-		# plt.savefig(self.outdir+'/'+prefix+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_lin.png')
-		# plt.clf()
 
 		# Do a smoothed version
 		bins = np.linspace(np.log(min(fft_f[1:-1])),np.log(max(fft_f[1:-1])),numsmoothbins,endpoint=False)
@@ -347,8 +389,14 @@ class tfgi:
 
 	def analyse_tod(self, prefix, pixelrange=range(0,31), detrange=range(0,4), phaserange=range(0,4), plotlimit=0.0, quiet=False, dofft=False, plottods=True, plotmap=True, dopol=False, plotcombination=True, numfiles=50):
 
-		print(self.outdir+'/'+prefix)
-		ensure_dir(self.outdir+'/'+prefix)
+		polext = ""
+		if dopol:
+			polext = "_pol"
+		plotext = "/plots"
+
+		print(self.outdir+'/'+prefix+polext)
+		ensure_dir(self.outdir+'/'+prefix+polext)
+		ensure_dir(self.outdir+'/'+prefix+polext+plotext)
 
 		if 'DIP' in prefix:
 			# We have a sky dip. Run the routine to analyse that rather than this routine.
@@ -362,12 +410,12 @@ class tfgi:
 		skypos,pa = self.calc_positions(az, el, jd)
 		healpix_pixel, centralpos = self.calc_healpix_pixels(skypos)
 
-		plot_tfgi_tod(skypos.ra,self.outdir+'/'+prefix+'/plot_ra.png')
-		plot_tfgi_tod(skypos.dec,self.outdir+'/'+prefix+'/plot_dec.png')
-		plot_tfgi_tod(pa,self.outdir+'/'+prefix+'/plot_pa.png')
+		plot_tfgi_tod(skypos.ra,self.outdir+'/'+prefix+polext+plotext+'/plot_ra.png')
+		plot_tfgi_tod(skypos.dec,self.outdir+'/'+prefix+polext+plotext+'/plot_dec.png')
+		plot_tfgi_tod(pa,self.outdir+'/'+prefix+polext+plotext+'/plot_pa.png')
 		# exit()
-		aperflux_outputfile = open(self.outdir+'/'+prefix+'/aperflux.txt', "w")
-		gauflux_outputfile = open(self.outdir+'/'+prefix+'/_gauflux.txt', "w")
+		aperflux_outputfile = open(self.outdir+'/'+prefix+polext+'/aperflux.txt', "w")
+		gauflux_outputfile = open(self.outdir+'/'+prefix+polext+'/gauflux.txt', "w")
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
@@ -387,16 +435,16 @@ class tfgi:
 					print(j)
 					if plottods:
 						# Plot some tods
-						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
-						plot_tfgi_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
 					# Do an FFT. Warning, this can slow things down quite a bit.
 					if dofft:
-						param_est, sigma_param_est = self.plot_fft(data[det][pix][j][0:10000],self.outdir+'/'+prefix+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_fit.png',samplerate=1000)
+						param_est, sigma_param_est = self.plot_fft(data[det][pix][j][0:10000],self.outdir+'/'+prefix+polext+plotext+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_fit.png',samplerate=1000)
 						print(str(param_est[0]) + " " + str(sigma_param_est[0]) + " " + str(param_est[1]) + " " + str(sigma_param_est[1]) + " " + str(param_est[2]) + " " + str(sigma_param_est[2]))
 					data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
 					if plottods:
-						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
 
 				# Do we want to change from phase to I1,Q,U,I2?
 				if dopol:
@@ -420,7 +468,7 @@ class tfgi:
 						# 	ordering = [3,0,2,1]
 					# If we have polcal data, use it
 					print(pixinfo['polcal'])
-					print(pixinfo['polcal'][det])
+					# print(pixinfo['polcal'][det])
 					if pixinfo['polcal'] != []:
 						# polcorr = [pixinfo['polcal'][det][3],pixinfo['polcal'][det][4],pixinfo['polcal'][det][5],pixinfo['polcal'][det][6]]
 						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa,polangle=pixinfo['polcal'][det][1])#,polcorr=polcorr)
@@ -431,8 +479,8 @@ class tfgi:
 					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
 
 					if plottods:
-						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
-						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
 
 					skymap = np.zeros(self.npix, dtype=np.float)
 					hitmap = np.zeros(self.npix, dtype=np.float)
@@ -464,14 +512,14 @@ class tfgi:
 					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
 
 
-					self.write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
-					self.write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+					self.write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+polext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+					self.write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+polext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
 
 					pixel = np.where(skymap == maxval)
 					pos = hp.pix2ang(self.nside,pixel)
 					lon = pos[1] * 180.0/np.pi
 					lat = (np.pi/2.0 - pos[0]) * 180.0/np.pi
-					print(lon,lat)
+					# print(lon,lat)
 					if pixinfo['tgi'] == 1:
 						freq = 30.0
 					else:
@@ -482,15 +530,15 @@ class tfgi:
 					aperflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(aperflux[0])+'	'+str(aperflux[1])+'	'+str(aperflux[2]) + '\n')
 
 					# Also do a Gaussian fit
-					pixels_tofit = query_ellipse(self.nside, lon[0][0], lat[0][0], 10.0, 1.0, 0.0)
+					pixels_tofit = query_ellipse(self.nside, lon[0][0], lat[0][0], 5.0, 1.0, 0.0)
 					pixels_tofit = pixels_tofit[skymap[pixels_tofit] != hp.pixelfunc.UNSEEN]
 					pixels_positions = hp.pix2ang(self.nside,pixels_tofit)
-					print(pixels_positions)
-					print(len(pixels_positions))
+					# print(pixels_positions)
+					# print(len(pixels_positions))
 					fit_w = fitting.LevMarLSQFitter()
 					gaussianfit = models.Gaussian2D(maxval, np.pi/2.0-lat[0][0]*np.pi/180.0, lon[0][0]*np.pi/180.0, 1.0*np.pi/180.0, 1.0*np.pi/180.0)
-					print(gaussianfit)
-					print('hello')
+					# print(gaussianfit)
+					# print('hello')
 					xi = pixels_positions[0]
 					yi = pixels_positions[1]
 					plt.plot(xi,skymap[pixels_tofit])
@@ -499,54 +547,54 @@ class tfgi:
 					plt.plot(yi,skymap[pixels_tofit])
 					plt.savefig('test_y.png')
 					plt.clf()
-					print(len(xi))
-					print(len(yi))
-					print(len(skymap[pixels_tofit]))
+					# print(len(xi))
+					# print(len(yi))
+					# print(len(skymap[pixels_tofit]))
 					gauss = fit_w(gaussianfit, xi, yi, skymap[pixels_tofit])
 					print(gauss)
-					print(gauss.amplitude)
+					# print(gauss.amplitude)
 					model_data = gauss(xi, yi)
-					print(model_data)
-					plt.plot(xi,model_data)
-					plt.savefig('test_x_model.png')
-					plt.clf()
-					plt.plot(yi,model_data)
-					plt.savefig('test_y_model.png')
-					plt.clf()
+					# print(model_data)
+					# plt.plot(xi,model_data)
+					# plt.savefig('test_x_model.png')
+					# plt.clf()
+					# plt.plot(yi,model_data)
+					# plt.savefig('test_y_model.png')
+					# plt.clf()
 					skymap_residual = skymap.copy()
 					skymap_residual[pixels_tofit] = skymap_residual[pixels_tofit] - model_data
 					gauflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(gauss.amplitude.value)+'	'+str(gauss.x_stddev.value*180.0/np.pi)+'	'+str(gauss.y_stddev.value*180.0/np.pi)+'	'+str(gauss.theta.value*180.0/np.pi) + '\n')
 
 					if plotmap:
 						hp.mollview(skymap)
-						plt.savefig(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
 					if plotmap:
 						hp.mollview(hitmap)
-						plt.savefig(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						hp.gnomview(skymap,rot=centralpos,reso=5)
-						plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						hp.gnomview(skymap_residual,rot=centralpos,reso=5)
-						plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
 					if plotmap and plotlimit != 0.0:
 						hp.mollview(skymap,min=-plotlimit,max=plotlimit)
-						plt.savefig(self.outdir+'/'+prefix+'/skymap_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
 						hp.gnomview(skymap,rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
-						plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
 
 		aperflux_outputfile.close()
 		gauflux_outputfile.close()
-		array = np.loadtxt(self.outdir+'/'+prefix+'/aperflux.txt')
+		array = np.loadtxt(self.outdir+'/'+prefix+polext+'/aperflux.txt')
 		x = range(0,len(array[:,4]))
 		plt.errorbar(x,array[:,4],yerr=array[:,5],fmt='r+')
-		plt.savefig(self.outdir+'/'+prefix+'/aperflux.pdf')
+		plt.savefig(self.outdir+'/'+prefix+polext+'/aperflux.pdf')
 
 		# Do some combined plots if requested
 		if plotcombination:
@@ -559,13 +607,13 @@ class tfgi:
 					filelist = []
 					hitlist = []
 					for pix in range(1,self.numpixels):
-						filelist.append(self.outdir+'/'+prefix+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
-						hitlist.append(self.outdir+'/'+prefix+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+						filelist.append(self.outdir+'/'+prefix+polext+'/skymap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
+						hitlist.append(self.outdir+'/'+prefix+polext+'/hitmap_'+str(pix)+'_'+str(k)+'_'+str(i)+'.fits')
 					print(filelist)
-					self.combine_sky_maps(filelist,hitlist,prefix,self.outdir+'/'+prefix+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit2)
+					self.combine_sky_maps(filelist,hitlist,prefix,self.outdir+'/'+prefix+polext+'/combined_'+str(i)+'_'+str(k),centralpos=centralpos,plotlimit=plotlimit2)
 
 			for i in range(1,5):
-				self.calc_P_angle_skymaps(self.outdir+'/'+prefix+'/combined_1_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_2_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+'/combined_3_'+str(i)+'_skymap.fits',prefix,self.outdir+'/'+prefix+'/combined_pol_'+str(i),centralpos=centralpos)
+				self.calc_P_angle_skymaps(self.outdir+'/'+prefix+polext+'/combined_1_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+polext+'/combined_2_'+str(i)+'_skymap.fits',self.outdir+'/'+prefix+polext+'/combined_3_'+str(i)+'_skymap.fits',prefix,self.outdir+'/'+prefix+polext+'/combined_pol_'+str(i),centralpos=centralpos)
 
 
 		# # Plot a boxcar average
@@ -588,8 +636,13 @@ class tfgi:
 		return
 
 	def stack_maps_tod(self, prefix,schedules,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,dopol=False,numfiles=50):
-		print(self.outdir+'/'+prefix)
-		ensure_dir(self.outdir+'/'+prefix)
+		
+		polext = ""
+		if dopol:
+			polext = "_pol"
+
+		print(self.outdir+'/'+prefix+polext)
+		ensure_dir(self.outdir+'/'+prefix+polext)
 
 		skymap = np.zeros((len(pixelrange),self.npix), dtype=np.float)
 		hitmap = np.zeros((len(pixelrange),self.npix), dtype=np.float)
@@ -631,26 +684,26 @@ class tfgi:
 				else:
 					skymap[pixnum][i] = hp.pixelfunc.UNSEEN
 
-			self.write_healpix_map(skymap[pixnum],prefix,self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.fits')
-			self.write_healpix_map(hitmap[pixnum],prefix,self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'.fits')
+			self.write_healpix_map(skymap[pixnum],prefix,self.outdir+'/'+prefix+polext+'/skymap_'+str(pix+1)+'.fits')
+			self.write_healpix_map(hitmap[pixnum],prefix,self.outdir+'/'+prefix+polext+'/hitmap_'+str(pix+1)+'.fits')
 
 			hp.mollview(skymap[pixnum])
-			plt.savefig(self.outdir+'/'+prefix+'/skymap_'+str(pix+1)+'.png')
+			plt.savefig(self.outdir+'/'+prefix+polext+'/skymap_'+str(pix+1)+'.png')
 			plt.close()
 			plt.clf()
 			hp.mollview()
-			plt.savefig(self.outdir+'/'+prefix+'/hitmap_'+str(pix+1)+'.png')
+			plt.savefig(self.outdir+'/'+prefix+polext+'/hitmap_'+str(pix+1)+'.png')
 			hp.gnomview(skymap[pixnum],rot=centralpos,reso=5)
-			plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_'+str(pix+1)+'.png')
+			plt.savefig(self.outdir+'/'+prefix+polext+'/skymap_zoom_'+str(pix+1)+'.png')
 			plt.close()
 			plt.clf()
 			if plotlimit != 0.0:
 				hp.mollview(skymap[pixnum],min=-plotlimit,max=plotlimit)
-				plt.savefig(self.outdir+'/'+prefix+'/skymap_cut_'+str(pix+1)+'.png')
+				plt.savefig(self.outdir+'/'+prefix+polext+'/skymap_cut_'+str(pix+1)+'.png')
 				plt.close()
 				plt.clf()
 				hp.gnomview(skymap[pixnum],rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
-				plt.savefig(self.outdir+'/'+prefix+'/skymap_zoom_cut_'+str(pix+1)+'.png')
+				plt.savefig(self.outdir+'/'+prefix+polext+'/skymap_zoom_cut_'+str(pix+1)+'.png')
 				plt.close()
 				plt.clf()
 		return
@@ -812,15 +865,21 @@ class tfgi:
 		return
 
 	def analyse_skydip(self, prefix, pixelrange=range(0,31), detrange=range(0,4), phaserange=range(0,4), plotlimit=0.0, quiet=False, plottods=False, dopol=False, numfiles=50, minel=35.0, maxel=85.0, numelbins=100, plotindividual=False):
-		print(self.outdir+'/'+prefix)
-		ensure_dir(self.outdir+'/'+prefix)
+
+		polext = ""
+		if dopol:
+			polext = "_pol"
+		plotext = "/plots"
+		print(self.outdir+'/'+prefix+polext)
+		ensure_dir(self.outdir+'/'+prefix+polext)
+		ensure_dir(self.outdir+'/'+prefix+polext+plotext)
 
 		atm_tgi = 5.0
 		atm_fgi = 10.0
 
-		meas_outputfile = open(self.outdir+'/'+prefix+'/measurements.txt', "w")
-		avg_outputfile = open(self.outdir+'/'+prefix+'/measurements_avg.txt', "w")
-		std_outputfile = open(self.outdir+'/'+prefix+'/measurements_std.txt', "w")
+		meas_outputfile = open(self.outdir+'/'+prefix+polext+'/measurements.txt', "w")
+		avg_outputfile = open(self.outdir+'/'+prefix+polext+'/measurements_avg.txt', "w")
+		std_outputfile = open(self.outdir+'/'+prefix+polext+'/measurements_std.txt', "w")
 		meas_outputfile.write('#Assuming atmosphere of ' + str(atm_tgi) + 'K for TGI and ' + str(atm_fgi) + 'K for FGI\n')
 		std_outputfile.write('#Assuming atmosphere of ' + str(atm_tgi) + 'K for TGI and ' + str(atm_fgi) + 'K for FGI\n')
 		# Read in the data
@@ -830,7 +889,7 @@ class tfgi:
 		tempmask = el[0].copy()
 		tempmask[tempmask < minel] = 0.
 		tempmask[tempmask > maxel] = 0.
-		# plot_tfgi_tod(tempmask,self.outdir+'/'+prefix+'/mask.pdf')
+		# plot_tfgi_tod(tempmask,self.outdir+'/'+prefix+polext+'/mask.pdf')
 		skydip_mask = tempmask.copy()
 		# Find out whether we're going up or down in elevation
 		for i in range(1,len(skydip_mask)):
@@ -856,7 +915,7 @@ class tfgi:
 					num_skydips = num_skydips+1
 					notzero = 0
 		# print(num_skydips)
-		plot_tfgi_tod(skydip_mask,self.outdir+'/'+prefix+'/mask_bit.pdf',formatstr='b')
+		plot_tfgi_tod(skydip_mask,self.outdir+'/'+prefix+polext+plotext+'/mask_bit.pdf',formatstr='b')
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
@@ -883,10 +942,10 @@ class tfgi:
 
 					if plottods:
 						# Do a plot of az vs. tod
-						plot_tfgi_tod(data[det][pix][j],self.outdir+'/'+prefix+'/tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
-						plot_tfgi_val_tod(az[det],data[det][pix][j],self.outdir+'/'+prefix+'/az_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
-						plot_tfgi_val_tod(el[det],data[det][pix][j],self.outdir+'/'+prefix+'/el_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
-						plot_tfgi_val_tod(az[det],el[det],self.outdir+'/'+prefix+'/az_el_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_tod(data[det][pix][j],self.outdir+'/'+prefix+polext+plotext+'/tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_val_tod(az[det],data[det][pix][j],self.outdir+'/'+prefix+polext+plotext+'/az_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_val_tod(el[det],data[det][pix][j],self.outdir+'/'+prefix+polext+plotext+'/el_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
+						plot_tfgi_val_tod(az[det],el[det],self.outdir+'/'+prefix+polext+plotext+'/az_el_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1))
 
 					# Plot the individual skydips
 					elbins = np.zeros((5,num_skydips,numelbins))
@@ -934,10 +993,10 @@ class tfgi:
 
 
 						if plotindividual:
-							plot_tfgi_skydip(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-							# plot_tfgi_skydip(elbins[0][i],elbins[2][i],self.outdir+'/'+prefix+'/average_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-							plot_tfgi_skydip(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
-							# plot_tfgi_skydip(elbins[0][i],elbins[4][i],self.outdir+'/'+prefix+'/std_average_fit_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							plot_tfgi_skydip(elbins[0][i],elbins[1][i],self.outdir+'/'+prefix+polext+plotext+'/average_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							# plot_tfgi_skydip(elbins[0][i],elbins[2][i],self.outdir+'/'+prefix+polext+plotext+'/average_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							plot_tfgi_skydip(elbins[0][i],elbins[3][i],self.outdir+'/'+prefix+polext+plotext+'/std_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
+							# plot_tfgi_skydip(elbins[0][i],elbins[4][i],self.outdir+'/'+prefix+polext+plotext+'/std_average_fit_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_'+str(i))
 
 					avg_outputfile.write(str(pix) + "	" + str(det) + "	" + str(j) + "	" + str(avg_systemp/num_skydips)+'\n')
 
@@ -949,7 +1008,7 @@ class tfgi:
 							plt.plot(elbins[0][i],elbins[1][i],'r')
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')
-					plt.savefig(self.outdir+'/'+prefix+'/average_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/average_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
 					plt.close()
 					plt.clf()
 
@@ -988,7 +1047,7 @@ class tfgi:
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')
 					plt.legend(prop={'size':8})
-					plt.savefig(self.outdir+'/'+prefix+'/std_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/std_combine_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
 					plt.close()
 					plt.clf()
 
@@ -1024,7 +1083,7 @@ class tfgi:
 					plt.xlabel('Elevation')
 					plt.ylabel('Power')
 					plt.legend(prop={'size':8})
-					plt.savefig(self.outdir+'/'+prefix+'/average_combine_norm_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/average_combine_norm_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
 					plt.close()
 					plt.clf()
 
@@ -1044,7 +1103,7 @@ class tfgi:
 
 					plt.xlabel('Elevation')
 					plt.ylabel('Power (fit subtracted)')
-					plt.savefig(self.outdir+'/'+prefix+'/average_combine_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
+					plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/average_combine_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.pdf')
 					plt.close()
 					plt.clf()
 
@@ -1298,7 +1357,7 @@ class tfgi:
 				P2_stats_table=pd.DataFrame(data=P2_stats,columns=["Vout","Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms","P angle (deg), corrected","%pol"])
 				print(P2_stats_table)
 				if offset:
-				    print(adj[k,:])
+					print(adj[k,:])
 				print("Average P ang (corrected): " + '{:3.1f}'.format(np.mean(p_ang_corr)))
 				print("Average %pol: " + '{:3.1f}'.format(np.mean(np.abs(L2_mean[k,:]*100/I2_mean[k,:]))))
 			# Plot data on screen and into a pdf file
