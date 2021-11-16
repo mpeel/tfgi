@@ -2,7 +2,7 @@
 # -*- coding: utf-8  -*-
 #
 # Various functions related to tgi
-# 
+#
 # Version history:
 #
 # 15-Apr-2019  M. Peel       Started
@@ -19,7 +19,7 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz, Galactic, ICRS, FK5
 from astropy.time import Time
 from astropy.coordinates import Angle
-import astropy_speedups
+# import astropy_speedups
 from scipy.optimize import curve_fit
 import os
 import astroplan
@@ -34,6 +34,9 @@ import skyfield.api as sfa
 # from skyfield.api import load, Topos
 import ephem
 import multiprocessing as mp
+from astropy.coordinates.erfa_astrom import erfa_astrom, ErfaAstromInterpolator
+import astropy.units as u
+
 
 def calc_beam_area(beam):
 	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
@@ -147,7 +150,9 @@ class tfgi:
 
 	def convert_azel_radec(inputarr):
 		az,el,timearr=inputarr
-		return position.AltAz(az=az*u.deg,alt=el*u.deg,location=self.telescope,obstime=timearr).transform_to(ICRS)
+		with erfa_astrom.set(ErfaAstromInterpolator(300 * u.s)):
+			newpos = position.AltAz(az=az*u.deg,alt=el*u.deg,location=self.telescope,obstime=timearr).transform_to(ICRS)
+		return newpos
 
 	# Note: this is currently slow and over-precise, see
 	# https://github.com/astropy/astropy/pull/6068
@@ -253,7 +258,7 @@ class tfgi:
 		# 	print(args[0].upper())
 		# 	print(args[1:])
 		hp.write_map(outputname,data,overwrite=True,extra_header=extra_header)
-		return 
+		return
 
 	def plot_fft(self, data, outputname, samplerate=1000, numsmoothbins=50):
 		fft_w = np.fft.rfft(data)
@@ -373,7 +378,7 @@ class tfgi:
 		if len(pa) > 0:
 			ang = 2.0*pa # Already in radians
 			Q = newdata[1,:]*np.cos(ang) + newdata[2,:]*np.sin(ang)
-			U = -newdata[1,:]*np.sin(ang) + newdata[2,:]*np.cos(ang) 
+			U = -newdata[1,:]*np.sin(ang) + newdata[2,:]*np.cos(ang)
 			newdata[1] = Q.copy()
 			newdata[2] = U.copy()
 
@@ -419,176 +424,178 @@ class tfgi:
 
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
-			# Get the pixel info
-			pixinfo = self.get_pixel_info(jd[0][0]+self.jd_ref,pix+1)
-			print(pixinfo)
-			if pixinfo == []:
-				# We don't have a good pixel, skip it
-				continue
-			if pixinfo['pixel'] <= 0:
-				# Pixel isn't a pixel
-				continue
+			try:
+				# Get the pixel info
+				pixinfo = self.get_pixel_info(jd[0][0]+self.jd_ref,pix+1)
+				print(pixinfo)
+				if pixinfo == []:
+					# We don't have a good pixel, skip it
+					continue
+				if pixinfo['pixel'] <= 0:
+					# Pixel isn't a pixel
+					continue
 
-			for det in detrange:
+				for det in detrange:
 
-				for j in phaserange:
-					print(j)
-					if plottods:
-						# Plot some tods
-						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
-						plot_tfgi_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
-					# Do an FFT. Warning, this can slow things down quite a bit.
-					if dofft:
-						param_est, sigma_param_est = self.plot_fft(data[det][pix][j][0:10000],self.outdir+'/'+prefix+polext+plotext+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_fit.png',samplerate=1000)
-						print(str(param_est[0]) + " " + str(sigma_param_est[0]) + " " + str(param_est[1]) + " " + str(sigma_param_est[1]) + " " + str(param_est[2]) + " " + str(sigma_param_est[2]))
-					data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
-					if plottods:
-						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
+					for j in phaserange:
+						print(j)
+						if plottods:
+							# Plot some tods
+							plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
+							plot_tfgi_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
+						# Do an FFT. Warning, this can slow things down quite a bit.
+						if dofft:
+							param_est, sigma_param_est = self.plot_fft(data[det][pix][j][0:10000],self.outdir+'/'+prefix+polext+plotext+'/plot_fft_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_fit.png',samplerate=1000)
+							print(str(param_est[0]) + " " + str(sigma_param_est[0]) + " " + str(param_est[1]) + " " + str(sigma_param_est[1]) + " " + str(param_est[2]) + " " + str(sigma_param_est[2]))
+						data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
+						if plottods:
+							plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+							plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
 
-				# Do we want to change from phase to I1,Q,U,I2?
-				if dopol:
-					if pixinfo['tgi'] == 1:
-						# if det == 0:
-						ordering = [0,1,2,3]
-						# elif det == 1:
-						# 	ordering = [1,2,3,0]
-						# elif det == 2:
-						# 	ordering = [2,3,0,1]
-						# elif det == 3:
-						# 	ordering = [3,0,1,2]
-					else:
-						# if det == 0:
-						ordering = [0,2,1,3]
-						# elif det == 1:
-						# 	ordering = [2,1,3,0]
-						# elif det == 2:
-						# 	ordering = [1,3,0,2]
-						# elif det == 3:
-						# 	ordering = [3,0,2,1]
-					# If we have polcal data, use it
-					print(pixinfo['polcal'])
-					# print(pixinfo['polcal'][det])
-					if pixinfo['polcal'] != []:
-						# polcorr = [pixinfo['polcal'][det][3],pixinfo['polcal'][det][4],pixinfo['polcal'][det][5],pixinfo['polcal'][det][6]]
-						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa,polangle=pixinfo['polcal'][det][1])#,polcorr=polcorr)
-					else:
-						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa)
-
-				for j in phaserange:
-					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
-
-					if plottods:
-						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
-						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
-
-					skymap = np.zeros(self.npix, dtype=np.float)
-					hitmap = np.zeros(self.npix, dtype=np.float)
-					for i in range(0,len(healpix_pixel)):
-						skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + data[det][pix][j][i]
-						hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
-					for i in range(0,len(skymap)):
-						if hitmap[i] >= 1:
-							skymap[i] = skymap[i]/hitmap[i]
+					# Do we want to change from phase to I1,Q,U,I2?
+					if dopol:
+						if pixinfo['tgi'] == 1:
+							# if det == 0:
+							ordering = [0,1,2,3]
+							# elif det == 1:
+							# 	ordering = [1,2,3,0]
+							# elif det == 2:
+							# 	ordering = [2,3,0,1]
+							# elif det == 3:
+							# 	ordering = [3,0,1,2]
 						else:
-							skymap[i] = hp.pixelfunc.UNSEEN
+							# if det == 0:
+							ordering = [0,2,1,3]
+							# elif det == 1:
+							# 	ordering = [2,1,3,0]
+							# elif det == 2:
+							# 	ordering = [1,3,0,2]
+							# elif det == 3:
+							# 	ordering = [3,0,2,1]
+						# If we have polcal data, use it
+						print(pixinfo['polcal'])
+						# print(pixinfo['polcal'][det])
+						if pixinfo['polcal'] != []:
+							# polcorr = [pixinfo['polcal'][det][3],pixinfo['polcal'][det][4],pixinfo['polcal'][det][5],pixinfo['polcal'][det][6]]
+							data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa,polangle=pixinfo['polcal'][det][1])#,polcorr=polcorr)
+						else:
+							data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,pa=pa)
 
-					# Get the maximum value in the map
-					maxval = np.max(skymap)
-					# Get a sample of data from the start of the measurement
-					std = np.std(data[det][pix][j][0:4000])
-					print(maxval)
-					print(std)
-					if pixinfo['tgi']:
-						conv = self.calc_JytoK(0.2,self.nu_tgi)
-						flux = 344.0
-					else:
-						conv = self.calc_JytoK(0.2,self.nu_fgi)
-						flux = 318.0
+					for j in phaserange:
+						print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
 
-					estimate = std*(flux/maxval)/np.sqrt(4000.0)
-					print('In Jy/sec:' + str(estimate))
-					print('In K/sec:' + str(estimate*conv))
-					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
+						if plottods:
+							plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
+							plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
+
+						skymap = np.zeros(self.npix, dtype=np.float)
+						hitmap = np.zeros(self.npix, dtype=np.float)
+						for i in range(0,len(healpix_pixel)):
+							skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + data[det][pix][j][i]
+							hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
+						for i in range(0,len(skymap)):
+							if hitmap[i] >= 1:
+								skymap[i] = skymap[i]/hitmap[i]
+							else:
+								skymap[i] = hp.pixelfunc.UNSEEN
+
+						# Get the maximum value in the map
+						maxval = np.max(skymap)
+						# Get a sample of data from the start of the measurement
+						std = np.std(data[det][pix][j][0:4000])
+						print(maxval)
+						print(std)
+						if pixinfo['tgi']:
+							conv = self.calc_JytoK(0.2,self.nu_tgi)
+							flux = 344.0
+						else:
+							conv = self.calc_JytoK(0.2,self.nu_fgi)
+							flux = 318.0
+
+						estimate = std*(flux/maxval)/np.sqrt(4000.0)
+						print('In Jy/sec:' + str(estimate))
+						print('In K/sec:' + str(estimate*conv))
+						print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
 
 
-					self.write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+polext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
-					self.write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+polext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+						self.write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+polext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+						self.write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+polext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
 
-					pixel = np.where(skymap == maxval)
-					pos = hp.pix2ang(self.nside,pixel)
-					lon = pos[1] * 180.0/np.pi
-					lat = (np.pi/2.0 - pos[0]) * 180.0/np.pi
-					# print(lon,lat)
-					if pixinfo['tgi'] == 1:
-						freq = 30.0
-					else:
-						freq = 40.0
-					res_arcmin = 4.0*np.pi / self.npix
-					aperflux = haperflux(skymap, freq, res_arcmin, lon[0][0], lat[0][0], 100.0, 100.0, 140.0, units='JyPix',column=0,nested=False, noise_model=0)
-					print(aperflux)
-					aperflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(aperflux[0])+'	'+str(aperflux[1])+'	'+str(aperflux[2]) + '\n')
+						pixel = np.where(skymap == maxval)
+						pos = hp.pix2ang(self.nside,pixel)
+						lon = pos[1] * 180.0/np.pi
+						lat = (np.pi/2.0 - pos[0]) * 180.0/np.pi
+						# print(lon,lat)
+						if pixinfo['tgi'] == 1:
+							freq = 30.0
+						else:
+							freq = 40.0
+						res_arcmin = 4.0*np.pi / self.npix
+						aperflux = haperflux(skymap, freq, res_arcmin, lon[0][0], lat[0][0], 100.0, 100.0, 140.0, units='JyPix',column=0,nested=False, noise_model=0)
+						print(aperflux)
+						aperflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(aperflux[0])+'	'+str(aperflux[1])+'	'+str(aperflux[2]) + '\n')
 
-					# Also do a Gaussian fit
-					pixels_tofit = query_ellipse(self.nside, lon[0][0], lat[0][0], 5.0, 1.0, 0.0)
-					pixels_tofit = pixels_tofit[skymap[pixels_tofit] != hp.pixelfunc.UNSEEN]
-					pixels_positions = hp.pix2ang(self.nside,pixels_tofit)
-					# print(pixels_positions)
-					# print(len(pixels_positions))
-					fit_w = fitting.LevMarLSQFitter()
-					gaussianfit = models.Gaussian2D(maxval, np.pi/2.0-lat[0][0]*np.pi/180.0, lon[0][0]*np.pi/180.0, 1.0*np.pi/180.0, 1.0*np.pi/180.0)
-					# print(gaussianfit)
-					# print('hello')
-					xi = pixels_positions[0]
-					yi = pixels_positions[1]
-					plt.plot(xi,skymap[pixels_tofit])
-					plt.savefig('test_x.png')
-					plt.clf()
-					plt.plot(yi,skymap[pixels_tofit])
-					plt.savefig('test_y.png')
-					plt.clf()
-					# print(len(xi))
-					# print(len(yi))
-					# print(len(skymap[pixels_tofit]))
-					gauss = fit_w(gaussianfit, xi, yi, skymap[pixels_tofit])
-					print(gauss)
-					# print(gauss.amplitude)
-					model_data = gauss(xi, yi)
-					# print(model_data)
-					# plt.plot(xi,model_data)
-					# plt.savefig('test_x_model.png')
-					# plt.clf()
-					# plt.plot(yi,model_data)
-					# plt.savefig('test_y_model.png')
-					# plt.clf()
-					skymap_residual = skymap.copy()
-					skymap_residual[pixels_tofit] = skymap_residual[pixels_tofit] - model_data
-					gauflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(gauss.amplitude.value)+'	'+str(gauss.x_stddev.value*180.0/np.pi)+'	'+str(gauss.y_stddev.value*180.0/np.pi)+'	'+str(gauss.theta.value*180.0/np.pi) + '\n')
-
-					if plotmap:
-						hp.mollview(skymap)
-						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						plt.close()
+						# Also do a Gaussian fit
+						pixels_tofit = query_ellipse(self.nside, lon[0][0], lat[0][0], 5.0, 1.0, 0.0)
+						pixels_tofit = pixels_tofit[skymap[pixels_tofit] != hp.pixelfunc.UNSEEN]
+						pixels_positions = hp.pix2ang(self.nside,pixels_tofit)
+						# print(pixels_positions)
+						# print(len(pixels_positions))
+						fit_w = fitting.LevMarLSQFitter()
+						gaussianfit = models.Gaussian2D(maxval, np.pi/2.0-lat[0][0]*np.pi/180.0, lon[0][0]*np.pi/180.0, 1.0*np.pi/180.0, 1.0*np.pi/180.0)
+						# print(gaussianfit)
+						# print('hello')
+						xi = pixels_positions[0]
+						yi = pixels_positions[1]
+						plt.plot(xi,skymap[pixels_tofit])
+						plt.savefig('test_x.png')
 						plt.clf()
-					if plotmap:
-						hp.mollview(hitmap)
-						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						hp.gnomview(skymap,rot=centralpos,reso=5)
-						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						hp.gnomview(skymap_residual,rot=centralpos,reso=5)
-						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						plt.close()
+						plt.plot(yi,skymap[pixels_tofit])
+						plt.savefig('test_y.png')
 						plt.clf()
-					if plotmap and plotlimit != 0.0:
-						hp.mollview(skymap,min=-plotlimit,max=plotlimit)
-						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						plt.close()
-						plt.clf()
-						hp.gnomview(skymap,rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
-						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
-						plt.close()
-						plt.clf()
+						# print(len(xi))
+						# print(len(yi))
+						# print(len(skymap[pixels_tofit]))
+						gauss = fit_w(gaussianfit, xi, yi, skymap[pixels_tofit])
+						print(gauss)
+						# print(gauss.amplitude)
+						model_data = gauss(xi, yi)
+						# print(model_data)
+						# plt.plot(xi,model_data)
+						# plt.savefig('test_x_model.png')
+						# plt.clf()
+						# plt.plot(yi,model_data)
+						# plt.savefig('test_y_model.png')
+						# plt.clf()
+						skymap_residual = skymap.copy()
+						skymap_residual[pixels_tofit] = skymap_residual[pixels_tofit] - model_data
+						gauflux_outputfile.write(str(pix+1)+'	'+str(det+1)+'	'+str(j+1)+'	'+str(freq)+'	'+str(gauss.amplitude.value)+'	'+str(gauss.x_stddev.value*180.0/np.pi)+'	'+str(gauss.y_stddev.value*180.0/np.pi)+'	'+str(gauss.theta.value*180.0/np.pi) + '\n')
 
+						if plotmap:
+							hp.mollview(skymap)
+							plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+							plt.close()
+							plt.clf()
+						if plotmap:
+							hp.mollview(hitmap)
+							plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+							hp.gnomview(skymap,rot=centralpos,reso=5)
+							plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+							hp.gnomview(skymap_residual,rot=centralpos,reso=5)
+							plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_sub_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+							plt.close()
+							plt.clf()
+						if plotmap and plotlimit != 0.0:
+							hp.mollview(skymap,min=-plotlimit,max=plotlimit)
+							plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+							plt.close()
+							plt.clf()
+							hp.gnomview(skymap,rot=centralpos,reso=5,min=-plotlimit,max=plotlimit)
+							plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_zoom_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+							plt.close()
+							plt.clf()
+			except:
+				continue	
 		aperflux_outputfile.close()
 		gauflux_outputfile.close()
 		array = np.loadtxt(self.outdir+'/'+prefix+polext+'/aperflux.txt')
@@ -636,7 +643,7 @@ class tfgi:
 		return
 
 	def stack_maps_tod(self, prefix,schedules,pixelrange=range(0,31),detrange=range(0,4),phaserange=range(0,4),plotlimit=0.0,quiet=False,dofft=False,dopol=False,numfiles=50):
-		
+
 		polext = ""
 		if dopol:
 			polext = "_pol"
@@ -798,7 +805,7 @@ class tfgi:
 		plt.close()
 		plt.clf()
 
-		return		
+		return
 
 	def examine_source(self,skymaps,hitmaps,outputname,sourcepos=(0,0),plotlimit=0.0):
 
@@ -1127,7 +1134,7 @@ class tfgi:
 				for k in range(60):
 					for i in range(124):
 						campo1= np.fromfile(f,count=1, dtype='>a2')
-						campo2= np.fromfile(f,count=1, dtype='>u2')            
+						campo2= np.fromfile(f,count=1, dtype='>u2')
 						campo3= np.fromfile(f,count=1, dtype='>u2')
 						campo4= np.fromfile(f,count=1, dtype='>u1')
 						campo5= np.fromfile(f,count=1, dtype='>u1')
@@ -1140,8 +1147,8 @@ class tfgi:
 						channel_ID=  np.fromfile(f,count=1, dtype='>u1')
 						cal_flag=  np.fromfile(f,count=1, dtype='>u1')
 						cal_sw=  np.fromfile(f,count=1, dtype='>u1')
-						ph_sw=  np.fromfile(f,count=1, dtype='>u1') 
-						repuesto1=  np.fromfile(f,count=1, dtype='>u1') 
+						ph_sw=  np.fromfile(f,count=1, dtype='>u1')
+						repuesto1=  np.fromfile(f,count=1, dtype='>u1')
 						Nphstates=  np.fromfile(f,count=1, dtype='>u4')
 						PHseq= np.fromfile(f,count=16, dtype='>u1')
 						Processtype= np.fromfile(f,count=1, dtype='>u1')
@@ -1167,7 +1174,7 @@ class tfgi:
 							print('Tstamp = ' + str(Tstamp))
 							print('Time = ' + str(Time))
 							print('SID = ' + str(SID))
-							print('AqErr = ' + str(AqErr)) 
+							print('AqErr = ' + str(AqErr))
 							print('channel_ID = ' + str(channel_ID))
 							print('cal_flag = ' + str(cal_flag))
 							print('cal__sw = ' + str(cal_sw))
@@ -1225,12 +1232,12 @@ class tfgi:
 			phsum0=dt4[chan:chan+4,:,0]
 			if pixel >= 40:
 				# FGI
-				phsum90=dt4[chan:chan+4,:,1] 
-				phsum180=dt4[chan:chan+4,:,2]  
+				phsum90=dt4[chan:chan+4,:,1]
+				phsum180=dt4[chan:chan+4,:,2]
 			else:
 				# TGI
-				phsum180=dt4[chan:chan+4,:,1] 
-				phsum90=dt4[chan:chan+4,:,2]  
+				phsum180=dt4[chan:chan+4,:,1]
+				phsum90=dt4[chan:chan+4,:,2]
 
 			phsum270=dt4[chan:chan+4,:,3]
 			# Calculate I, Q and U
@@ -1348,7 +1355,7 @@ class tfgi:
 					maxnum = 6
 				# P_stats=list(zip(v_out,p_ang,L_mean[k,:],L_mean_rms[k,:],L_ang_mean[k,:],L_ang_rms[k,:]))
 				# P_stats_table=pd.DataFrame(data=P_stats,columns=["Vout","Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms"])
-				# print(P_stats_table)  
+				# print(P_stats_table)
 				p_ang_corr = L2_ang_mean[k,0:maxnum]+p_ang_num
 				p_ang_corr[p_ang_corr > 90.0] = p_ang_corr[p_ang_corr > 90.0] - 180.0
 				p_ang_corr[p_ang_corr < -90.0] = p_ang_corr[p_ang_corr < -90.0] + 180.0
@@ -1366,7 +1373,7 @@ class tfgi:
 			plt.subplot(2,2,1)
 			tim=(np.arange(4)+1)*2
 			tim1=np.arange(8)+1
-			tim2=np.arange(ds)/125              
+			tim2=np.arange(ds)/125
 			plt.grid(True)
 			if pixel >= 40:
 				plt.xticks([0,1,2,3,4,5,6,7],('0','90','180','270','0','90','180','270'))
@@ -1431,7 +1438,7 @@ class tfgi:
 			for k in range(60*40):
 				for ch in range(8):
 					campo1= np.fromfile(f,count=1, dtype='>a2')
-					campo2= np.fromfile(f,count=1, dtype='>u2')            
+					campo2= np.fromfile(f,count=1, dtype='>u2')
 					campo3= np.fromfile(f,count=1, dtype='>u2')
 					campo4= np.fromfile(f,count=1, dtype='>u1')
 					campo5= np.fromfile(f,count=1, dtype='>u1')
@@ -1444,8 +1451,8 @@ class tfgi:
 					channel_ID=  np.fromfile(f,count=1, dtype='>u1')
 					cal_flag=  np.fromfile(f,count=1, dtype='>u1')
 					cal_sw=  np.fromfile(f,count=1, dtype='>u1')
-					ph_sw=  np.fromfile(f,count=1, dtype='>u1') 
-					repuesto1=  np.fromfile(f,count=1, dtype='>u1') 
+					ph_sw=  np.fromfile(f,count=1, dtype='>u1')
+					repuesto1=  np.fromfile(f,count=1, dtype='>u1')
 					Nphstates=  np.fromfile(f,count=1, dtype='>u4')
 					PHseq= np.fromfile(f,count=16, dtype='>u1')
 					Processtype= np.fromfile(f,count=1, dtype='>u1')
@@ -1461,11 +1468,11 @@ class tfgi:
 					Correct for calibration offset by taking off the first 80 phase states
 
 					for n in range(8):
-					   data[n-1,:]=np.roll(data[n-1,:],-80)          
-					   
+					   data[n-1,:]=np.roll(data[n-1,:],-80)
+
 					"""
 					if not quiet:
-						print(k)      
+						print(k)
 						print('campo1 = ' + str(campo1))
 						print('campo2 = ' + str(campo2))
 						print('campo3 = ' + str(campo3))
@@ -1476,7 +1483,7 @@ class tfgi:
 						print('Tstamp = ' + str(Tstamp))
 						print('Time = ' + str(Time))
 						print('SID = ' + str(SID))
-						print('AqErr = ' + str(AqErr)) 
+						print('AqErr = ' + str(AqErr))
 						print('channel_ID = ' + str(channel_ID))
 						print('cal_flag = ' + str(cal_flag))
 						print('cal__sw = ' + str(cal_sw))
@@ -1510,20 +1517,20 @@ class tfgi:
 			dt4=dt3[:,:,0:640]-dt3[:,:,640:]
 			ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
 			ph90=(dt4[:,:,40+ns:80-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,600+ns:640-ne])/4
-			ph180=(dt4[:,:,120+ns:160-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4 
+			ph180=(dt4[:,:,120+ns:160-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
 			ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,520+ns:560-ne])/4
 		else:
 			# TGI
 			dt4=dt3[:,:,640:]-dt3[:,:,0:640]
 			ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
 			ph180=(dt4[:,:,40+ns:80-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,520+ns:560-ne])/4
-			ph90=(dt4[:,:,120+ns:160-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4 
+			ph90=(dt4[:,:,120+ns:160-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
 			ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,600+ns:640-ne])/4
 
 		# Calculate the mean values over a given phase state for all phase states in the file (equal to scientific data)
 		phsum0=np.mean(ph0,axis=2)
-		phsum90=np.mean(ph90,axis=2) 
-		phsum180=np.mean(ph180,axis=2)  
+		phsum90=np.mean(ph90,axis=2)
+		phsum180=np.mean(ph180,axis=2)
 		phsum270=np.mean(ph270,axis=2)
 		# Calculate Q and U
 		I=(phsum0+phsum180+phsum90+phsum270)/2
@@ -1553,7 +1560,7 @@ class tfgi:
 		fig.suptitle('Engineering data for Pixel ' + str(pixel))
 		plt.subplot(2,2,1)
 		tim1=np.arange(1280)/160
-		tim2=np.arange(7500)/125              
+		tim2=np.arange(7500)/125
 		plt.grid(True)
 		plt.plot(tim1,dt3[0,0,:],label='V1')
 		plt.plot(tim1,dt3[1,0,:],label='V2')
@@ -1608,15 +1615,15 @@ class tfgi:
 # #################
 # # Horizon to equatorial conversion using the pointing model, functions:
 
-# # hor2sky(Jd, A, E, horn): 	
-# # INPUT: time [Jd], hor coord (A,E) [deg], horn number 
-# # OUTPUT: dictionary = {ra (deg), dec (deg)} 
+# # hor2sky(Jd, A, E, horn):
+# # INPUT: time [Jd], hor coord (A,E) [deg], horn number
+# # OUTPUT: dictionary = {ra (deg), dec (deg)}
 
-# # sky2hor(Jd, ra, dec, horn): 
+# # sky2hor(Jd, ra, dec, horn):
 # # INPUT: time [Jd], sky coord: (ra, dec) [deg], horn number
-# # OUTPUT: dictionary = {Jd (jd), A (deg), E (deg)} 
+# # OUTPUT: dictionary = {Jd (jd), A (deg), E (deg)}
 
-# # Note: they take array (or scalar) as coord imput and return a dictionary of arrays 
+# # Note: they take array (or scalar) as coord imput and return a dictionary of arrays
 # # (or scalars) as coord output; integer for horn
 
 # # Pmodel value (central horn)
@@ -1745,7 +1752,7 @@ class tfgi:
 			ya = y - deltay
 			za = z - deltaz
 
-			# Iterative process 
+			# Iterative process
 			while i < i_max:
 				# Correction n
 				w=(P_c+P_n*za)/np.sqrt(xa**2 +ya**2)
@@ -1781,7 +1788,7 @@ class tfgi:
 			yb = ya + deltay
 			zb = za + deltaz
 
-			# Iterative process 
+			# Iterative process
 			while i < i_max:
 				# Correction n
 				deltaxn= - P_x*zb
@@ -1805,7 +1812,7 @@ class tfgi:
 				if (np.abs(deltaxn-deltaxn1) < s) and (np.abs(deltayn-deltayn1) < s) and (np.abs(deltazn-deltazn1) < s):
 					i = i_max
 			i=0
-			
+
 
 
 			### 1) Hooke’s Law Vertical Flexure (c)
@@ -1819,7 +1826,7 @@ class tfgi:
 			yc = yb + deltay
 			zc = zb + deltaz
 
-			# Iterative process 
+			# Iterative process
 			while i < i_max:
 				# Correction n
 				deltaxn= P_f*zc*xc
@@ -1846,7 +1853,7 @@ class tfgi:
 
 
 			# changing to angular coordinates:
-			E=np.arcsin(zc/np.sqrt(xc**2 +yc**2 +zc**2)) 
+			E=np.arcsin(zc/np.sqrt(xc**2 +yc**2 +zc**2))
 			A = np.pi - np.arctan2(yc,xc)
 			# changing to degrees
 			E = E * r2d
@@ -1855,9 +1862,9 @@ class tfgi:
 			az_fin = A
 			el_fin = E
 
-		# Create output 
+		# Create output
 		data = {'A':az_fin,'E':el_fin}
-		
+
 		return [az_fin],[el_fin]
 
 
@@ -1876,7 +1883,7 @@ class tfgi:
 
 # 	y = [0, #horn 1  -- in the center
 # 		 0,75.027,75.027,0,-75.027,-75.027, #horns 2 to 7 -- r~86.64 mm
-# 	 	 75.027,150.065,75.027,-75.027,-150.065,-75.027, #horns 8 to 13 --  r~150.07 	 
+# 	 	 75.027,150.065,75.027,-75.027,-150.065,-75.027, #horns 8 to 13 --  r~150.07
 #   	     0,150.065,150.065,0,-150.065,-150.065, #horns 14 to 19 --  r~173.28
 #   	     75.027,150.065,225.092,225.092,150.065,75.027,-75.027,-150.065,
 #   	     -225.092,-225.092,-150.065,-75.027] #horns 20 to 31 --  r~229.22
@@ -1884,20 +1891,20 @@ class tfgi:
 # 	horn = das2pos(das)
 
 # 	pos = {'x':x[horn], 'y':y[horn]}
-# 	return pos 
+# 	return pos
 
 
 
 # def horn_projection(A,E,horn,way):
 
 # 	# IMPUT: A [deg], E [deg], horn
-# 	# OUTPUT: dic = {A [deg], E [deg]} 
-# 	# PROP: correct the azimuth and elevation considering the horn position	
+# 	# OUTPUT: dic = {A [deg], E [deg]}
+# 	# PROP: correct the azimuth and elevation considering the horn position
 
 # 	# Get the position
 # 	pos = position(horn)
-# 	x = - pos['x']/f 
-# 	y = pos['y']/f 
+# 	x = - pos['x']/f
+# 	y = pos['y']/f
 
 # 	# Convert in radians
 # 	A = A * d2r
@@ -1917,8 +1924,8 @@ class tfgi:
 # 	elif way == 2:
 # 		A = (A - dA) * r2d
 # 		E = (E - dE) * r2d
-# 	else: 
-# 		print('wrong way input')		
+# 	else:
+# 		print('wrong way input')
 
 # 	out = {'A':A, 'E':E}
 
@@ -1956,7 +1963,7 @@ class tfgi:
 # 	A = altaz_horn['A']
 # 	E = altaz_horn['E']
 
-# 	# Pass  from horizon to sky 
+# 	# Pass  from horizon to sky
 # 	print('- Transformation hor2sky')
 # 	jd = Time(Jd, format = 'jd')
 # 	c = SkyCoord(alt = E, az = A, unit = 'deg', frame= 'altaz', obstime = jd, location = loc)
@@ -1969,4 +1976,3 @@ class tfgi:
 # 	print('##########')
 
 # 	return out
-
