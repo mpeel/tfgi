@@ -49,7 +49,7 @@ datasets1 = run.find_observations('LOCALMAP-180706')
 datasets2 = run.find_observations('LOCALMAP-180611')
 # datasets3 = run.find_observations('LOCALMAP-160622')
 # datasets4 = run.find_observations('LOCALMAP-160606')
-datasets = list(set(datasets1) | set(datasets2) | set(datasets3) | set(datasets4))
+datasets = list(set(datasets1) | set(datasets2))
 print(datasets)
 for dataset in datasets:
 	# You can set options for the reduction in the next line. The options and their defaults are:
