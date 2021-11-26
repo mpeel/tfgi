@@ -1624,8 +1624,10 @@ class tfgi:
 			automax = True
 		# Read in the data
 		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
-		healpix_pixel = hp.ang2pix(self.nside, (np.pi/2)-Angle(el, unit=u.deg).radian, Angle(az, unit=u.deg).radian)
-
+		healpix_pixel = hp.ang2pix(self.nside, (np.pi/2)-Angle(el[0], unit=u.deg).radian, Angle(az[0], unit=u.deg).radian)
+		print(healpix_pixel)
+		print(len(healpix_pixel))
+		# exit()
 		# Make maps for each pixel, detector, phase
 		for pix in pixelrange:
 			# Get the pixel info
@@ -1646,7 +1648,7 @@ class tfgi:
 						# Plot some tods
 						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
 						plot_tfgi_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
-					data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
+					data[det][pix][j] = self.subtractbaseline(data[det][pix][j],navg=200)
 					if plottods:
 						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
@@ -1690,31 +1692,34 @@ class tfgi:
 					skymap = np.zeros(self.npix, dtype=np.float)
 					hitmap = np.zeros(self.npix, dtype=np.float)
 					for i in range(0,len(healpix_pixel)):
+						# print('Hi!')
+						# print(data[det][pix][j][i])
 						skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + data[det][pix][j][i]
 						hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
 					for i in range(0,len(skymap)):
 						if hitmap[i] >= 1:
-							skymap[i] = skymap[i]/hitmap[i]
+							# skymap[i] = skymap[i]/hitmap[i]
+							pass
 						else:
 							skymap[i] = hp.pixelfunc.UNSEEN
 
 					# Get the maximum value in the map
-					maxval = np.max(skymap)
-					# Get a sample of data from the start of the measurement
-					std = np.std(data[det][pix][j][0:4000])
-					print(maxval)
-					print(std)
-					if pixinfo['tgi']:
-						conv = self.calc_JytoK(0.2,self.nu_tgi)
-						flux = 344.0
-					else:
-						conv = self.calc_JytoK(0.2,self.nu_fgi)
-						flux = 318.0
-
-					estimate = std*(flux/maxval)/np.sqrt(4000.0)
-					print('In Jy/sec:' + str(estimate))
-					print('In K/sec:' + str(estimate*conv))
-					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
+					# maxval = np.max(skymap)
+					# # Get a sample of data from the start of the measurement
+					# std = np.std(data[det][pix][j][0:4000])
+					# print(maxval)
+					# print(std)
+					# if pixinfo['tgi']:
+					# 	conv = self.calc_JytoK(0.2,self.nu_tgi)
+					# 	flux = 344.0
+					# else:
+					# 	conv = self.calc_JytoK(0.2,self.nu_fgi)
+					# 	flux = 318.0
+					#
+					# estimate = std*(flux/maxval)/np.sqrt(4000.0)
+					# print('In Jy/sec:' + str(estimate))
+					# print('In K/sec:' + str(estimate*conv))
+					# print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
 
 
 					self.write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+polext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
@@ -1729,13 +1734,18 @@ class tfgi:
 						plt.close()
 						plt.clf()
 					if plotmap:
-						hp.orthview(hitmap)
+						hp.orthview(hitmap,rot=[0,90],half_sky=True)
 						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
 					if plotmap and plotlimit != 0.0:
 						hp.orthview(skymap,min=0,max=plotlimit,rot=[0,90],half_sky=True)
 						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.close()
+						plt.clf()
+					if plotmap:
+						hp.orthview(skymap,norm='hist',rot=[0,90],half_sky=True)
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_hist_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
 						plt.close()
 						plt.clf()
 					# exit()

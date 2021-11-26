@@ -63,6 +63,6 @@ for dataset in datasets:
 	# dopol=False             - set to true to change from detector to polarised outputs
 	# plotcombination=True    - set to false to disable creating a combined map
 	# numfiles=50             - set to a lower number to only read in the first files of each observation
-	run.analyse_tod(dataset,plotlimit=0.001,dopol=True,plottods=False)
+	run.analyse_tod(dataset,plotlimit=0.001,dopol=True,plottods=True)
 
 exit()
