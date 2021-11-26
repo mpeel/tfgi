@@ -21,6 +21,7 @@ import tfgi
 
 # This is needed if you want to write out lots of plots
 mpl.rcParams['agg.path.chunksize'] = 10000
+plt.ioff()
 
 # Set this to where you have a copy of the data
 basedir = '/Volumes/WD12TB/quijote2/'
