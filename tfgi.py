@@ -407,6 +407,9 @@ class tfgi:
 			# We have a sky dip. Run the routine to analyse that rather than this routine.
 			self.analyse_skydip(prefix,pixelrange=pixelrange,detrange=detrange,phaserange=phaserange,quiet=quiet,plottods=plottods,dopol=dopol)
 			return
+		if 'LOCALMAP' in prefix:
+			self.analyse_localmap(prefix,pixelrange=pixelrange,detrange=detrange,phaserange=phaserange,quiet=quiet,plottods=plottods,dopol=dopol)
+			return
 
 		# Read in the data
 		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
@@ -595,7 +598,7 @@ class tfgi:
 							plt.close()
 							plt.clf()
 			except:
-				continue	
+				continue
 		aperflux_outputfile.close()
 		gauflux_outputfile.close()
 		array = np.loadtxt(self.outdir+'/'+prefix+polext+'/aperflux.txt')
@@ -1609,6 +1612,133 @@ class tfgi:
 		plt.ylabel('angle, deg.')
 		plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
 		fig.savefig('plot_eng_'+str(pixel)+'.pdf')
+		return
+
+	def analyse_localmap(self, prefix, pixelrange=range(0,31), detrange=range(0,4), phaserange=range(0,4), plotlimit=0.0, quiet=False, plottods=True, plotmap=True, dopol=False, numfiles=150):
+		polext = ""
+		if dopol:
+			polext = "_pol"
+		plotext = "/plots"
+		automax=False
+		if plotlimit == 0:
+			automax = True
+		# Read in the data
+		az, el, jd, data = self.read_tod(prefix,numfiles=numfiles,quiet=quiet)
+		healpix_pixel = hp.ang2pix(self.nside, (np.pi/2)-Angle(el, unit=u.deg).radian, Angle(az, unit=u.deg).radian)
+
+		# Make maps for each pixel, detector, phase
+		for pix in pixelrange:
+			# Get the pixel info
+			pixinfo = self.get_pixel_info(jd[0][0]+self.jd_ref,pix+1)
+			print(pixinfo)
+			if pixinfo == []:
+				# We don't have a good pixel, skip it
+				continue
+			if pixinfo['pixel'] <= 0:
+				# Pixel isn't a pixel
+				continue
+
+			for det in detrange:
+
+				for j in phaserange:
+					print(j)
+					if plottods:
+						# Plot some tods
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000],self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_pre_zoom.png')
+					data[det][pix][j] = self.subtractbaseline(data[det][pix][j])
+					if plottods:
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_zoom.png')
+
+				# Do we want to change from phase to I1,Q,U,I2?
+				if dopol:
+					if pixinfo['tgi'] == 1:
+						# if det == 0:
+						ordering = [0,1,2,3]
+						# elif det == 1:
+						# 	ordering = [1,2,3,0]
+						# elif det == 2:
+						# 	ordering = [2,3,0,1]
+						# elif det == 3:
+						# 	ordering = [3,0,1,2]
+					else:
+						# if det == 0:
+						ordering = [0,2,1,3]
+						# elif det == 1:
+						# 	ordering = [2,1,3,0]
+						# elif det == 2:
+						# 	ordering = [1,3,0,2]
+						# elif det == 3:
+						# 	ordering = [3,0,2,1]
+					# If we have polcal data, use it
+					print(pixinfo['polcal'])
+					# print(pixinfo['polcal'][det])
+					if pixinfo['polcal'] != []:
+						# polcorr = [pixinfo['polcal'][det][3],pixinfo['polcal'][det][4],pixinfo['polcal'][det][5],pixinfo['polcal'][det][6]]
+						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering,polangle=pixinfo['polcal'][det][1])#,polcorr=polcorr)
+					else:
+						data[det][pix] = self.converttopol(data[det][pix],ordering=ordering)
+
+				for j in phaserange:
+					print('Pixel ' + str(pix+1) + ', detector ' + str(det+1) + ', phase ' + str(j+1))
+
+					if plottods:
+						plot_tfgi_tod(data[det][pix][j][10:-1500], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal.png')
+						plot_tfgi_tod(data[det][pix][j][10:5000], self.outdir+'/'+prefix+polext+plotext+'/plot_tod_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'_cal_zoom.png')
+
+					skymap = np.zeros(self.npix, dtype=np.float)
+					hitmap = np.zeros(self.npix, dtype=np.float)
+					for i in range(0,len(healpix_pixel)):
+						skymap[healpix_pixel[i]] = skymap[healpix_pixel[i]] + data[det][pix][j][i]
+						hitmap[healpix_pixel[i]] = hitmap[healpix_pixel[i]] + 1
+					for i in range(0,len(skymap)):
+						if hitmap[i] >= 1:
+							skymap[i] = skymap[i]/hitmap[i]
+						else:
+							skymap[i] = hp.pixelfunc.UNSEEN
+
+					# Get the maximum value in the map
+					maxval = np.max(skymap)
+					# Get a sample of data from the start of the measurement
+					std = np.std(data[det][pix][j][0:4000])
+					print(maxval)
+					print(std)
+					if pixinfo['tgi']:
+						conv = self.calc_JytoK(0.2,self.nu_tgi)
+						flux = 344.0
+					else:
+						conv = self.calc_JytoK(0.2,self.nu_fgi)
+						flux = 318.0
+
+					estimate = std*(flux/maxval)/np.sqrt(4000.0)
+					print('In Jy/sec:' + str(estimate))
+					print('In K/sec:' + str(estimate*conv))
+					print('System temperature:' + str(calc_Tsys(estimate*conv,8e9,1/4000)))
+
+
+					self.write_healpix_map(skymap,prefix,self.outdir+'/'+prefix+polext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+					self.write_healpix_map(hitmap,prefix,self.outdir+'/'+prefix+polext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.fits')
+
+					if automax:
+						plotlimit = 3.0*np.median(skymap[skymap != hp.UNSEEN])
+					print(plotlimit)
+					if plotmap:
+						hp.orthview(skymap,rot=[0,90],half_sky=True)
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.close()
+						plt.clf()
+					if plotmap:
+						hp.orthview(hitmap)
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/hitmap_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.close()
+						plt.clf()
+					if plotmap and plotlimit != 0.0:
+						hp.orthview(skymap,min=0,max=plotlimit,rot=[0,90],half_sky=True)
+						plt.savefig(self.outdir+'/'+prefix+polext+plotext+'/skymap_cut_'+str(pix+1)+'_'+str(det+1)+'_'+str(j+1)+'.png')
+						plt.close()
+						plt.clf()
+					# exit()
 		return
 
 

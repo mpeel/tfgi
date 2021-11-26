@@ -36,8 +36,17 @@ run = tfgi.tfgi(outdir=outdir,\
 	nside = 512)
 
 # Search for CRAB and MOON observations in April 2019, and analyse them.
-datasets = run.find_observations('MOON-2111')
-# datasets2 = run.find_observations('DIP000')
+# datasets1 = run.find_observations('CASS-211115-1805')
+# datasets2 = run.find_observations('CASS-211115-1909')
+# datasets3 = run.find_observations('CASS-211115-2039')
+# datasets4 = run.find_observations('CRAB-211115-2250')
+datasets = run.find_observations('LOCALMAP-211115')
+# datasets = run.find_observations('MOON-2111')
+# # datasets2 = run.find_observations('DIP000')
+# # datasets = list(set(datasets1) | set(datasets2))
+# datasets = list(set(datasets1) | set(datasets2) | set(datasets3) | set(datasets4))
+# datasets1 = run.find_observations('DIP000-211117')
+# datasets2 = run.find_observations('CASS-211117')
 # datasets = list(set(datasets1) | set(datasets2))
 print(datasets)
 for dataset in datasets:

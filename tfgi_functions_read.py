@@ -2,7 +2,7 @@
 # -*- coding: utf-8  -*-
 #
 # Various functions related to reading tgi data, separate from the class
-# 
+#
 # Version history:
 #
 # 02-May-2019  M. Peel       Split from tgi.py
