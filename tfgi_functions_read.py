@@ -65,6 +65,7 @@ def read_pixel_positions(filename):
 	return array
 
 def read_tod_files(indir, prefix, numpixels, numfiles=50,quiet=True):
+	# numfiles = 10
 	# Read in the data
 	jd = np.empty(0)
 	az = np.empty(0)
