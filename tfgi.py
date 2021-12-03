@@ -1515,20 +1515,37 @@ class tfgi:
 		# (DT4 calculation moved below)
 		# Reduce the phase states from 16 to 4 by summing equivalent states taking the positive
 		# and negative transition samples out of the sumation
+		# if pixel >= 40:
+		# 	# FGI
+		# 	dt4=dt3[:,:,0:640]-dt3[:,:,640:]
+		# 	ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
+		# 	ph90=(dt4[:,:,40+ns:80-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,600+ns:640-ne])/4
+		# 	ph180=(dt4[:,:,120+ns:160-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
+		# 	ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,520+ns:560-ne])/4
+		# else:
+		# 	# TGI
+		# 	dt4=dt3[:,:,640:]-dt3[:,:,0:640]
+		# 	ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
+		# 	ph180=(dt4[:,:,40+ns:80-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,520+ns:560-ne])/4
+		# 	ph90=(dt4[:,:,120+ns:160-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
+		# 	ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,600+ns:640-ne])/4
+
+		# This is corrected
 		if pixel >= 40:
 			# FGI
 			dt4=dt3[:,:,0:640]-dt3[:,:,640:]
 			ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
 			ph90=(dt4[:,:,40+ns:80-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,600+ns:640-ne])/4
-			ph180=(dt4[:,:,120+ns:160-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
-			ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,520+ns:560-ne])/4
+			ph180=(dt4[:,:,80+ns:120-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
+			ph270=(dt4[:,:,120+ns:160-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,520+ns:560-ne])/4
 		else:
 			# TGI
 			dt4=dt3[:,:,640:]-dt3[:,:,0:640]
 			ph0=(dt4[:,:,0+ns:40-ne]+dt4[:,:,240+ns:280-ne]+dt4[:,:,400+ns:440-ne]+dt4[:,:,480+ns:520-ne])/4
 			ph180=(dt4[:,:,40+ns:80-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,520+ns:560-ne])/4
-			ph90=(dt4[:,:,120+ns:160-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
-			ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,600+ns:640-ne])/4
+			ph90=(dt4[:,:,80+ns:120-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
+			ph270=(dt4[:,:,120+ns:160-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,600+ns:640-ne])/4
+
 
 		# Calculate the mean values over a given phase state for all phase states in the file (equal to scientific data)
 		phsum0=np.mean(ph0,axis=2)
@@ -1749,6 +1766,9 @@ class tfgi:
 						plt.close()
 						plt.clf()
 					# exit()
+
+					# hp.orthview(maps,rot=[0,90],half_sky=True,min=0,max=0.05,cmap='Greys')
+
 		return
 
 
