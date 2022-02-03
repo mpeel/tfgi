@@ -1124,7 +1124,7 @@ class tfgi:
 		return
 
 	# Originally by Roger, 'read_sci_FTGI_multi2018.py'
-	def get_sci(self, filenames,quiet=False):
+	def get_sci(self, filenames,quiet=False,indir=''):
 		numfiles = len(filenames)
 		# data=np.empty(shape=(124,60*4000*numfiles),dtype=float)
 		dat=np.empty(4000,dtype='i8')
@@ -1133,7 +1133,7 @@ class tfgi:
 			data.append([])
 		for j in range(0,numfiles):
 			print(filenames[j])
-			with open(filenames[j], "rb") as f:
+			with open(indir+filenames[j], "rb") as f:
 				for k in range(60):
 					for i in range(124):
 						campo1= np.fromfile(f,count=1, dtype='>a2')
@@ -1195,7 +1195,7 @@ class tfgi:
 		return np.array(data)
 
 	# Originally by Roger, 'plot_cal_data_sci_FGI_multi2018.py'
-	def plot_sci(self, data,channels=range(0,30),pixels=range(0,30),fix_neg=False,offset=True):
+	def plot_sci(self, data,channels=range(0,30),pixels=range(0,30),fix_neg=False,offset=True,prefix='cal'):
 		dt2=data
 		ds=int(data.size/(8*124))
 		# fls=int(ds/30000)
@@ -1428,7 +1428,7 @@ class tfgi:
 			plt.xlabel('time,s')
 			plt.ylabel('angle, deg')
 			plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
-			fig.savefig('plot_sci_'+str(pixel)+'.pdf')
+			fig.savefig('plot_'+str(prefix)+'_sci_'+str(pixel)+'.pdf')
 			fig.clf()
 		return
 
