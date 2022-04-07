@@ -36,7 +36,7 @@ import ephem
 import multiprocessing as mp
 from astropy.coordinates.erfa_astrom import erfa_astrom, ErfaAstromInterpolator
 import astropy.units as u
-
+import sys
 
 def calc_beam_area(beam):
 	return (np.pi * (beam*np.pi/180.0)**2)/(4.0*np.log(2.0))
@@ -1204,6 +1204,7 @@ class tfgi:
 			DAS = channels[channel]
 			pixel = pixels[channel]
 			chan=DAS*4-4
+			outfile = open(str(prefix)+'_sci_'+str(pixel)+'.txt', 'w')
 			# reshape array into phase sum cycles (8 4ON/4OFF) and then take Cal OFF from CAL ON at 4KHz/125Hz
 			# There is an ambiguity in the order of the CALON/CALOFF. It changes sign after 4 s
 			dt3=np.reshape(dt2,(124,ds,8))
@@ -1283,7 +1284,7 @@ class tfgi:
 			# ... and the last 1,000 samples
 			mask[-1000:-1] = 0
 			# Broaden the borders
-			testlen = 1500
+			testlen = 2000
 			for i in range(0,len((mask/testlen)-testlen)):
 				if np.sum(np.abs(mask[i*testlen:i*testlen+testlen])) != testlen:
 					mask[i*testlen:i*testlen+testlen] = 0
@@ -1303,10 +1304,6 @@ class tfgi:
 						num_sections = num_sections+1
 						notzero = 0
 						borders.append(i)
-			# print(num_sections)
-
-			# print(len(mask))
-			# print(np.sum(mask))
 
 			# Calculate file statistics in terms of polar magnitude and angle
 			# I_mean=np.empty(shape=(4,fls),dtype=float)
@@ -1365,14 +1362,14 @@ class tfgi:
 
 				P2_stats=list(zip(v_out,p_ang,L2_mean[k,:],L2_mean_rms[k,:],L2_ang_mean[k,:],L2_ang_rms[k,:],p_ang_corr,np.abs(L2_mean[k,:]*100/I2_mean[k,:])))
 				P2_stats_table=pd.DataFrame(data=P2_stats,columns=["Vout","Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms","P angle (deg), corrected","%pol"])
-				print(P2_stats_table)
+				print(P2_stats_table,file=outfile)
 				if offset:
 					print(adj[k,:])
-				print("Average P ang (corrected): " + '{:3.1f}'.format(np.mean(p_ang_corr)))
-				print("Average %pol: " + '{:3.1f}'.format(np.mean(np.abs(L2_mean[k,:]*100/I2_mean[k,:]))))
+				print("Average P ang (corrected): " + '{:3.1f}'.format(np.mean(p_ang_corr)),file=outfile)
+				print("Average %pol: " + '{:3.1f}'.format(np.mean(np.abs(L2_mean[k,:]*100/I2_mean[k,:]))),file=outfile)
 			# Plot data on screen and into a pdf file
 			fig=plt.figure()
-			fig.suptitle('Scientific data for Pixel '+str(pixel))
+			fig.suptitle('Scientific data for Pixel '+str(pixel) + '(' + str(prefix) + ')')
 			plt.subplot(2,2,1)
 			tim=(np.arange(4)+1)*2
 			tim1=np.arange(8)+1
@@ -1387,8 +1384,8 @@ class tfgi:
 			plt.plot(dt3[chan+2,0,:],label='V3')
 			plt.plot(dt3[chan+3,0,:],label='V4')
 			plt.legend()
-			plt.ylabel('voltage output, V')
-			plt.xlabel('Phase Switch angle, deg')
+			plt.ylabel('voltage output (V)')
+			plt.xlabel('Phase Switch angle (deg)')
 			plt.title('CalOn/CalOff Cycle')
 			plt.subplot(2,2,2)
 			plt.grid(True)
@@ -1400,8 +1397,8 @@ class tfgi:
 			plt.plot(dt4[chan+1,0,:])
 			plt.plot(dt4[chan+2,0,:])
 			plt.plot(dt4[chan+3,0,:])
-			plt.ylabel('voltage output, V')
-			plt.xlabel('Phase Switch Angle, deg')
+			plt.ylabel('voltage output (V)')
+			plt.xlabel('Phase Switch Angle (deg)')
 			plt.title('Cal polar signal')
 			plt.subplot(2,2,3)
 			plt.grid(True)
@@ -1412,8 +1409,8 @@ class tfgi:
 			for i in range(0,len(borders)):
 				plt.axvline(x=float(borders[i])*8.0/1000.0)
 			plt.title('Detector polar magnitude')
-			plt.xlabel('time,s')
-			plt.ylabel('voltage, V')
+			plt.xlabel('time (s)')
+			plt.ylabel('voltage (V)')
 			plt.subplot(2,2,4)
 			plt.grid(True)
 			plt.yticks(np.arange(0,180,30))
@@ -1425,19 +1422,21 @@ class tfgi:
 				plt.axvline(x=float(borders[i])*8.0/1000.0)
 			# plt.plot(tim2,mask*50)
 			plt.title('Detector polar Angle')
-			plt.xlabel('time,s')
-			plt.ylabel('angle, deg')
-			plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
-			fig.savefig('plot_'+str(prefix)+'_sci_'+str(pixel)+'.pdf')
+			plt.xlabel('time (s)')
+			plt.ylabel('angle (deg)')
+			plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.9,wspace=0.4,hspace=0.6)
+			fig.savefig(str(prefix)+'_sci_'+str(pixel)+'.pdf')
 			fig.clf()
+			outfile.close()
 		return
 
 
 	# Originally by Roger, 'read_eng_FTGI_2018.py'
-	def get_eng(self, filenames,quiet=False):
+	def get_eng(self, filenames,quiet=False,indir=''):
 		data=np.empty(shape=(8,60*40*4000),dtype=float)
 		dat=np.empty(4000,dtype='i8')
-		with open(filenames, "rb") as f:
+		# NB: only reads in one file, should generalise to read more
+		with open(indir+filenames[0], "rb") as f:
 			for k in range(60*40):
 				for ch in range(8):
 					campo1= np.fromfile(f,count=1, dtype='>a2')
@@ -1504,7 +1503,7 @@ class tfgi:
 		return data
 
 	# Originally by Roger, 'plot_cal_data_sci_FGI_multi2018.py'
-	def plot_eng(self, data,pixel=0):
+	def plot_eng(self, data,pixel=0,prefix='cal'):
 		dt2=data
 		# ns is the positive transition samples and ne the negative slope transition samples
 		# that have been removed from the calculation
@@ -1529,6 +1528,8 @@ class tfgi:
 		# 	ph180=(dt4[:,:,40+ns:80-ne]+dt4[:,:,280+ns:320-ne]+dt4[:,:,440+ns:480-ne]+dt4[:,:,520+ns:560-ne])/4
 		# 	ph90=(dt4[:,:,120+ns:160-ne]+dt4[:,:,200+ns:240-ne]+dt4[:,:,320+ns:360-ne]+dt4[:,:,560+ns:600-ne])/4
 		# 	ph270=(dt4[:,:,80+ns:120-ne]+dt4[:,:,160+ns:200-ne]+dt4[:,:,360+ns:400-ne]+dt4[:,:,600+ns:640-ne])/4
+
+		outfile = open(str(prefix)+'_eng_'+str(pixel)+'.txt', 'w')
 
 		# This is corrected
 		if pixel >= 40:
@@ -1574,10 +1575,10 @@ class tfgi:
 		V_out=["Vout1","Vout2","Vout3","Vout4"]
 		P_stats=list(zip(V_out,L_mean,L_mean_rms,L_ang_mean,L_ang_rms,np.abs(L_mean*100/I_mean)))
 		P_stats_table=pd.DataFrame(data=P_stats,columns=["Output","P mag (volts)","P mag rms","P angle (deg)","P angle rms","%pol"])
-		print(P_stats_table)
+		print(P_stats_table,file=outfile)
 		# Plot data on screen and into a pdf file
 		fig=plt.figure()
-		fig.suptitle('Engineering data for Pixel ' + str(pixel))
+		fig.suptitle('Engineering data for Pixel ' + str(pixel) + '(' + str(prefix) + ')')
 		plt.subplot(2,2,1)
 		tim1=np.arange(1280)/160
 		tim2=np.arange(7500)/125
@@ -1587,8 +1588,8 @@ class tfgi:
 		plt.plot(tim1,dt3[2,0,:],label='V3')
 		plt.plot(tim1,dt3[3,0,:],label='V4')
 		plt.legend()
-		plt.ylabel('voltage output, V')
-		plt.xlabel('time,msecs')
+		plt.ylabel('voltage output (V)')
+		plt.xlabel('time (ms)')
 		plt.title('polar signal')
 		plt.subplot(2,2,2)
 		plt.grid(True)
@@ -1606,8 +1607,8 @@ class tfgi:
 			plt.plot([phsum0[1,0],phsum180[1,0],phsum90[1,0],phsum270[1,0]])
 			plt.plot([phsum0[2,0],phsum180[2,0],phsum90[2,0],phsum270[2,0]])
 			plt.plot([phsum0[3,0],phsum180[3,0],phsum90[3,0],phsum270[3,0]])
-		plt.ylabel('voltage output, V')
-		plt.xlabel('phase state, deg.')
+		plt.ylabel('voltage output (V)')
+		plt.xlabel('phase state (deg)')
 		plt.title('scientific data polar signal')
 		plt.subplot(2,2,3)
 		plt.grid(True)
@@ -1616,8 +1617,8 @@ class tfgi:
 		plt.plot(tim2,L[2,:])
 		plt.plot(tim2,L[3,:])
 		plt.title('Detector polar magnitude')
-		plt.xlabel('time,s')
-		plt.ylabel('voltage, volts')
+		plt.xlabel('time (s)')
+		plt.ylabel('voltage (V)')
 		plt.subplot(2,2,4)
 		plt.grid(True)
 		plt.title('Detector polar Angle')
@@ -1625,10 +1626,11 @@ class tfgi:
 		plt.plot(tim2,L_ang[1,:])
 		plt.plot(tim2,L_ang[2,:])
 		plt.plot(tim2,L_ang[3,:])
-		plt.xlabel('time,s')
-		plt.ylabel('angle, deg.')
-		plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.8,wspace=0.4,hspace=0.4)
-		fig.savefig('plot_eng_'+str(pixel)+'.pdf')
+		plt.xlabel('time (s)')
+		plt.ylabel('angle (deg)')
+		plt.subplots_adjust(bottom=0.1,left=0.1, right=0.9, top=0.9,wspace=0.4,hspace=0.6)
+		fig.savefig(str(prefix)+'_eng_'+str(pixel)+'.pdf')
+		outfile.close()
 		return
 
 	def analyse_localmap(self, prefix, pixelrange=range(0,31), detrange=range(0,4), phaserange=range(0,4), plotlimit=0.0, quiet=False, plottods=True, plotmap=True, dopol=False, numfiles=150):
