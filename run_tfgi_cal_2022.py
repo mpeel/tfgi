@@ -29,8 +29,20 @@ run = tfgi.tfgi(outdir=outdir,\
 # NOTE: if these don't run, make sure you have a ,\ at the end of each line - EXCEPT the last one, where it should end with a }
 measurements = [\
 
+## 2022-04-08
+# {'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-10-16-58-0000.sci2','pixel41_polcal1-22-04-08-10-16-58-0001.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'}
+# {'pixel':63,'channel':5,'files':['pixel63_polcal1-22-04-08-10-31-59-0001.sci2','pixel63_polcal1-22-04-08-10-31-59-0000.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+# {'pixel':42,'channel':6,'files':['pixel42_polcal1-22-04-08-10-47-02-0000.sci2','pixel42_polcal1-22-04-08-10-47-02-0001.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'}
+# {'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-11-28-00-0000.sci2','pixel41_polcal1-22-04-08-11-28-00-0001.sci2'],'prefix':'2022-04-08_polcal1_repeat','fix_neg':False,'indir':basedir+'data/2022-04/'}
+
+
+
+
+
+
 ## 2022-04-07
-{'pixel':63,'channel':5,'files':['pixel63_polcal1-22-04-07-14-12-03-0000.sci2','pixel63_polcal1-22-04-07-14-12-03-0001.sci2'],'prefix':'2022-04-07_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+# {'pixel':42,'channel':6,'files':['pixel42_polcal1-22-04-07-14-28-23-0000.sci2','pixel42_polcal1-22-04-07-14-28-23-0001.sci2'],'prefix':'2022-04-07_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+# {'pixel':63,'channel':5,'files':['pixel63_polcal1-22-04-07-14-12-03-0000.sci2','pixel63_polcal1-22-04-07-14-12-03-0001.sci2'],'prefix':'2022-04-07_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
 # {'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-07-13-57-58-0000.sci2','pixel41_polcal1-22-04-07-13-57-58-0001.sci2'],'prefix':'2022-04-07_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
 # {'pixel':5,'channel':25,'files':['pixel5_polcal2-22-04-07-12-52-03-0000.sci2','pixel5_polcal2-22-04-07-12-52-03-0001.sci2'],'prefix':'2022-04-07_polcal2_new','fix_neg':False,'indir':basedir+'data/2022-04/'},\
 # {'pixel':5,'channel':25,'files':['pixel5_polcal2-22-04-07-11-59-59-0000.sci2','pixel5_polcal2-22-04-07-11-59-59-0001.sci2'],'prefix':'2022-04-07_polcal2','fix_neg':False,'indir':basedir+'data/2022-04/'},\
@@ -69,10 +81,10 @@ measurements = [\
 # {'pixel':26,'channel':21,'files':['pix_26_polcal2-22-01-12-13-12-02-0000.sci2', 'pix_26_polcal2-22-01-12-13-12-02-0001.sci2'],'prefix':'2022-01-12_polcal2','fix_neg':False,'indir':basedir+'data/2022-01/'}\
 
 ## 2021-11-23
-{'pixel':41,'channel':4,'files':['pix41_polcal-21-11-22-12-25-54-0000.sci2','pix41_polcal-21-11-22-12-25-54-0001.sci2'],'prefix':'2021-11-21_polcal','fix_neg':False,'indir':basedir+'data/2021-11/'},\
-{'pixel':41,'channel':4,'files':['PIX_41_polcal-21-11-23-12-23-03-0000.sci2','PIX_41_polcal-21-11-23-12-23-03-0001.sci2'],'prefix':'2021-11-21_polcal_2','fix_neg':False,'indir':basedir+'data/2021-11/'},\
-{'pixel':42,'channel':6,'files':['PIX_42_polcal-21-11-23-12-08-09-0000.sci2','PIX_42_polcal-21-11-23-12-08-09-0001.sci2'],'prefix':'2021-11-21_polcal','fix_neg':False,'indir':basedir+'data/2021-11/'},\
-{'pixel':63,'channel':5,'files':['PIX_63_polcal-21-11-23-11-47-05-0000.sci2','PIX_63_polcal-21-11-23-11-47-05-0001.sci2'],'prefix':'2021-11-21_polcal','fix_neg':False,'indir':basedir+'data/2021-11/'}
+# {'pixel':41,'channel':4,'files':['pix41_polcal-21-11-22-12-25-54-0000.sci2','pix41_polcal-21-11-22-12-25-54-0001.sci2'],'prefix':'2021-11-21_polcal','fix_neg':False,'indir':basedir+'data/2021-11/'},\
+# {'pixel':41,'channel':4,'files':['PIX_41_polcal-21-11-23-12-23-03-0000.sci2','PIX_41_polcal-21-11-23-12-23-03-0001.sci2'],'prefix':'2021-11-21_polcal_2','fix_neg':False,'indir':basedir+'data/2021-11/'},\
+# {'pixel':42,'channel':6,'files':['PIX_42_polcal-21-11-23-12-08-09-0000.sci2','PIX_42_polcal-21-11-23-12-08-09-0001.sci2'],'prefix':'2021-11-21_polcal','fix_neg':False,'indir':basedir+'data/2021-11/'},\
+# {'pixel':63,'channel':5,'files':['PIX_63_polcal-21-11-23-11-47-05-0000.sci2','PIX_63_polcal-21-11-23-11-47-05-0001.sci2'],'prefix':'2021-11-21_polcal','fix_neg':False,'indir':basedir+'data/2021-11/'}
 
 
 ## Empty example
@@ -90,6 +102,18 @@ for measurement in measurements:
 
 # Run through the engineering data - note only the first file gets used anyway!
 measurements = [\
+
+## 2022-04-08
+# {'pixel':41,'files':['pixel41_polcal1-22-04-08-10-14-00-0000.eng2','pixel41_polcal1-22-04-08-10-14-00-0001.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'}
+# {'pixel':63,'files':['pixel63_polcal1-22-04-08-10-29-01-0000.eng2','pixel63_polcal1-22-04-08-10-29-01-0001.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'}
+# {'pixel':42,'files':['pixel42_polcal1-22-04-08-10-44-02-0001.eng2','pixel42_polcal1-22-04-08-10-44-02-0000.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'}
+# {'pixel':41,'files':['pixel41_polcal1-22-04-08-11-19-59-0000.eng2','pixel41_polcal1-22-04-08-11-19-59-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'}
+# {'pixel':63,'files':['pixel63_polcal1-22-04-08-11-38-58-0000.eng2','pixel63_polcal1-22-04-08-11-38-58-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'}
+# {'pixel':42,'files':['pixel42_polcal1-22-04-08-10-44-02-0001.eng2','pixel42_polcal1-22-04-08-10-44-02-0000.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'}
+{'pixel':41,'files':['pixel41_polcal1-22-04-08-12-33-03-0000.eng2','pixel41_polcal1-22-04-08-12-33-03-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat2','indir':basedir+'data/2022-04/'},\
+{'pixel':41,'files':['pixel41_polcal1-22-04-08-12-57-59-0000.eng2'],'prefix':'2022-04-08_polcal1_repeat3','indir':basedir+'data/2022-04/'}
+
+
 
 ## 2022-04-07
 # {'pixel':42,'files':['pixel42_polcal1-22-04-07-14-24-44-0000.eng2','pixel42_polcal1-22-04-07-14-24-44-0001.eng2'],'prefix':'2022-04-07_polcal1','indir':basedir+'data/2022-04/'},\
@@ -133,11 +157,11 @@ measurements = [\
 # {'pixel':26,'files':['pix_26_polcal2-22-01-12-13-09-04-0000.eng2','pix_26_polcal2-22-01-12-13-09-04-0001.eng2'],'prefix':'2022-01-12_polcal2','indir':basedir+'data/2022-01/'}\
 
 ## 2021-11-22
-{'pixel':41,'files':['pix41_polcal-21-11-22-12-21-19-0000.eng2','pix41_polcal-21-11-22-12-21-19-0001.eng2'],'prefix':'2021-11-22_polcal','indir':basedir+'data/2021-11/'},\
-{'pixel':41,'files':['PIX_41_polcal-21-11-23-12-20-01-0000.eng2','PIX_41_polcal-21-11-23-12-20-01-0001.eng2'],'prefix':'2021-11-23_polcal_2','indir':basedir+'data/2021-11/'},\
-{'pixel':63,'files':['PIX_63_polcal-21-11-23-11-44-06-0000.eng2','PIX_63_polcal-21-11-23-11-44-06-0001.eng2'],'prefix':'2021-11-23','indir':basedir+'data/2021-11/'},\
-{'pixel':42,'files':['PIX_42_polcal-21-11-23-12-04-01-0000.eng2','PIX_42_polcal-21-11-23-12-04-01-0001.eng2'],'prefix':'2021-11-23','indir':basedir+'data/2021-11/'},\
-{'pixel':23,'files':['PIX_23_polcal-21-11-23-13-32-01-0000.eng2','PIX_23_polcal-21-11-23-13-32-01-0001.eng2'],'prefix':'2021-11-23','indir':basedir+'data/2021-11/'},\
+# {'pixel':41,'files':['pix41_polcal-21-11-22-12-21-19-0000.eng2','pix41_polcal-21-11-22-12-21-19-0001.eng2'],'prefix':'2021-11-22_polcal','indir':basedir+'data/2021-11/'},\
+# {'pixel':41,'files':['PIX_41_polcal-21-11-23-12-20-01-0000.eng2','PIX_41_polcal-21-11-23-12-20-01-0001.eng2'],'prefix':'2021-11-23_polcal_2','indir':basedir+'data/2021-11/'},\
+# {'pixel':63,'files':['PIX_63_polcal-21-11-23-11-44-06-0000.eng2','PIX_63_polcal-21-11-23-11-44-06-0001.eng2'],'prefix':'2021-11-23','indir':basedir+'data/2021-11/'},\
+# {'pixel':42,'files':['PIX_42_polcal-21-11-23-12-04-01-0000.eng2','PIX_42_polcal-21-11-23-12-04-01-0001.eng2'],'prefix':'2021-11-23','indir':basedir+'data/2021-11/'},\
+# {'pixel':23,'files':['PIX_23_polcal-21-11-23-13-32-01-0000.eng2','PIX_23_polcal-21-11-23-13-32-01-0001.eng2'],'prefix':'2021-11-23','indir':basedir+'data/2021-11/'},\
 
 ## Empty example
 # {'pixel':,'files'=,prefix=,'indir':basedir+'data/2022-01/'},\
