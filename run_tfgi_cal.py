@@ -30,15 +30,14 @@ run = tfgi.tfgi(outdir=outdir,\
 measurements = [\
 
 ## 2022-04-08
-# {'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-10-16-58-0000.sci2','pixel41_polcal1-22-04-08-10-16-58-0001.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'}
-# {'pixel':63,'channel':5,'files':['pixel63_polcal1-22-04-08-10-31-59-0001.sci2','pixel63_polcal1-22-04-08-10-31-59-0000.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
-# {'pixel':42,'channel':6,'files':['pixel42_polcal1-22-04-08-10-47-02-0000.sci2','pixel42_polcal1-22-04-08-10-47-02-0001.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'}
-# {'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-11-28-00-0000.sci2','pixel41_polcal1-22-04-08-11-28-00-0001.sci2'],'prefix':'2022-04-08_polcal1_repeat','fix_neg':False,'indir':basedir+'data/2022-04/'}
-
-
-
-
-
+{'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-10-16-58-0000.sci2','pixel41_polcal1-22-04-08-10-16-58-0001.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+{'pixel':63,'channel':5,'files':['pixel63_polcal1-22-04-08-10-31-59-0000.sci2','pixel63_polcal1-22-04-08-10-31-59-0001.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+{'pixel':42,'channel':6,'files':['pixel42_polcal1-22-04-08-10-47-02-0000.sci2','pixel42_polcal1-22-04-08-10-47-02-0001.sci2'],'prefix':'2022-04-08_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+{'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-11-28-00-0000.sci2','pixel41_polcal1-22-04-08-11-28-00-0001.sci2'],'prefix':'2022-04-08_polcal1_repeat','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+{'pixel':63,'channel':5,'files':['pixel63_polcal1-22-04-08-11-50-00-0000.sci2','pixel63_polcal1-22-04-08-11-50-00-0001.sci2'],'prefix':'2022-04-08_polcal1_repeat','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+{'pixel':42,'channel':6,'files':['pixel42_polcal1-22-04-08-12-06-58-0000.sci2','pixel42_polcal1-22-04-08-12-06-58-0001.sci2'],'prefix':'2022-04-08_polcal1_repeat2','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+{'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-12-36-00-0000.sci2','pixel41_polcal1-22-04-08-12-36-00-0001.sci2'],'prefix':'2022-04-08_polcal1_repeat3','fix_neg':False,'indir':basedir+'data/2022-04/'},\
+{'pixel':41,'channel':4,'files':['pixel41_polcal1-22-04-08-13-00-58-0000.sci2','pixel41_polcal1-22-04-08-13-00-58-0001.sci2'],'prefix':'2022-04-08_polcal1_repeat4','fix_neg':False,'indir':basedir+'data/2022-04/'}
 
 ## 2022-04-07
 # {'pixel':42,'channel':6,'files':['pixel42_polcal1-22-04-07-14-28-23-0000.sci2','pixel42_polcal1-22-04-07-14-28-23-0001.sci2'],'prefix':'2022-04-07_polcal1','fix_neg':False,'indir':basedir+'data/2022-04/'},\
@@ -104,16 +103,15 @@ for measurement in measurements:
 measurements = [\
 
 ## 2022-04-08
-# {'pixel':41,'files':['pixel41_polcal1-22-04-08-10-14-00-0000.eng2','pixel41_polcal1-22-04-08-10-14-00-0001.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'}
-# {'pixel':63,'files':['pixel63_polcal1-22-04-08-10-29-01-0000.eng2','pixel63_polcal1-22-04-08-10-29-01-0001.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'}
-# {'pixel':42,'files':['pixel42_polcal1-22-04-08-10-44-02-0001.eng2','pixel42_polcal1-22-04-08-10-44-02-0000.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'}
-# {'pixel':41,'files':['pixel41_polcal1-22-04-08-11-19-59-0000.eng2','pixel41_polcal1-22-04-08-11-19-59-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'}
-# {'pixel':63,'files':['pixel63_polcal1-22-04-08-11-38-58-0000.eng2','pixel63_polcal1-22-04-08-11-38-58-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'}
-# {'pixel':42,'files':['pixel42_polcal1-22-04-08-10-44-02-0001.eng2','pixel42_polcal1-22-04-08-10-44-02-0000.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'}
+{'pixel':41,'files':['pixel41_polcal1-22-04-08-10-14-00-0000.eng2','pixel41_polcal1-22-04-08-10-14-00-0001.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'},\
+{'pixel':63,'files':['pixel63_polcal1-22-04-08-10-29-01-0000.eng2','pixel63_polcal1-22-04-08-10-29-01-0001.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'},\
+{'pixel':42,'files':['pixel42_polcal1-22-04-08-10-44-02-0001.eng2','pixel42_polcal1-22-04-08-10-44-02-0000.eng2'],'prefix':'2022-04-08_polcal1','indir':basedir+'data/2022-04/'},\
+{'pixel':41,'files':['pixel41_polcal1-22-04-08-11-19-59-0000.eng2','pixel41_polcal1-22-04-08-11-19-59-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'},\
+{'pixel':63,'files':['pixel63_polcal1-22-04-08-11-38-58-0000.eng2','pixel63_polcal1-22-04-08-11-38-58-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'},\
+{'pixel':42,'files':['pixel42_polcal1-22-04-08-10-44-02-0001.eng2','pixel42_polcal1-22-04-08-10-44-02-0000.eng2'],'prefix':'2022-04-08_polcal1_repeat','indir':basedir+'data/2022-04/'},\
+{'pixel':42,'files':['pixel42_polcal1-22-04-08-12-04-01-0000.eng2','pixel42_polcal1-22-04-08-12-04-01-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat2','indir':basedir+'data/2022-04/'},\
 {'pixel':41,'files':['pixel41_polcal1-22-04-08-12-33-03-0000.eng2','pixel41_polcal1-22-04-08-12-33-03-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat2','indir':basedir+'data/2022-04/'},\
-{'pixel':41,'files':['pixel41_polcal1-22-04-08-12-57-59-0000.eng2'],'prefix':'2022-04-08_polcal1_repeat3','indir':basedir+'data/2022-04/'}
-
-
+{'pixel':41,'files':['pixel41_polcal1-22-04-08-12-57-59-0000.eng2','pixel41_polcal1-22-04-08-12-57-59-0001.eng2'],'prefix':'2022-04-08_polcal1_repeat3','indir':basedir+'data/2022-04/'}
 
 ## 2022-04-07
 # {'pixel':42,'files':['pixel42_polcal1-22-04-07-14-24-44-0000.eng2','pixel42_polcal1-22-04-07-14-24-44-0001.eng2'],'prefix':'2022-04-07_polcal1','indir':basedir+'data/2022-04/'},\
