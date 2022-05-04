@@ -2,7 +2,7 @@
 # -*- coding: utf-8  -*-
 #
 # Run the TFGI python pipeline
-# 
+#
 # Version history:
 #
 # 02-Apr-2019  M. Peel       Started
@@ -32,7 +32,7 @@ run = tfgi.tfgi(outdir=outdir,\
 	datadir=basedir+'tod/',\
 	pixelfileloc=basedir+'etc/qt2_masterfiles_new/qt2_pixel_masterfile.',\
 	pixelposfileloc=basedir+'etc/tgi_fgi_horn_positions_table.txt',\
-	polcalfileloc=basedir+'etc/qt2_masterfiles_new/qt2_polcal.',
+	polcalfileloc=basedir+'etc/qt2_polcal.',
 	nside = 512)
 
 # Search for CRAB and MOON observations in April 2019, and analyse them.

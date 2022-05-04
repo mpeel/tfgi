@@ -25,7 +25,7 @@ run = tfgi.tfgi(outdir=outdir,\
 	datadir=basedir+'tod/',\
 	pixelfileloc=basedir+'etc/qt2_pixel_masterfile.',\
 	pixelposfileloc=basedir+'etc/tgi_fgi_horn_positions_table.txt',\
-	polcalfileloc=basedir+'etc/qt2_masterfiles_new/qt2_polcal.')
+	polcalfileloc=basedir+'etc/qt2_polcal.')
 
 # Still data to add to this list from 2018-06 and 2018-05 and 2017-03.data and 2017-03 and 2017-02 and 2017-01 and 2016-12 and 2016-11 and 2016-10
 
